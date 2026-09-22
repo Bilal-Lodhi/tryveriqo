@@ -1,0 +1,17 @@
+{
+    "name": "assessment_console",
+    "short_name": "assessment",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#10141A",
+    "theme_color": "#00BFA5",
+    "description": "Assessment integrity review console — candidate sessions, telemetry timelines and integrity signals.",
+    "orientation": "landscape-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        { "src": "icons/Icon-192.png", "sizes": "192x192", "type": "image/png" },
+        { "src": "icons/Icon-512.png", "sizes": "512x512", "type": "image/png" },
+        { "src": "icons/Icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "icons/Icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    ]
+}
