@@ -1,0 +1,133 @@
+name: CI
+
+# Runs on every push and pull request. No step calls a paid AI model: the AI
+# provider is substituted at its boundary in every automated test, and
+# scripts/smoke.mjs deliberately avoids the generation endpoint.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  backend:
+    name: Backend (build, typecheck, test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Typecheck all workspaces
+        run: npm run typecheck
+
+      - name: Build all workspaces
+        run: npm run build
+
+      - name: Run backend tests
+        run: npm run test:backend
+
+  console:
+    name: Console (analyze, test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies
+        working-directory: apps/console
+        run: flutter pub get
+
+      - name: Analyze
+        working-directory: apps/console
+        run: flutter analyze
+
+      - name: Test
+        working-directory: apps/console
+        run: flutter test
+
+  container:
+    name: Container image builds
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t assessment-ci:local .
+
+      - name: Prove the image fails closed without secrets
+        run: |
+          set +e
+          # Invoke the API directly rather than the entrypoint: the entrypoint
+          # needs a database, and this check is about configuration validation.
+          docker run --rm \
+            -e ENVIRONMENT=production \
+            --entrypoint node \
+            assessment-ci:local ./apps/api/dist/index.js > /tmp/startup.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/startup.log
+          if [ "$status" -eq 0 ]; then
+            echo "::error::the API started in production without any credentials"
+            exit 1
+          fi
+          grep -q "ASSESSMENT_API_TOKEN" /tmp/startup.log
+          grep -q "ASSESSMENT_SESSION_SECRET" /tmp/startup.log
+          grep -q "Refusing to start in production" /tmp/startup.log
+
+  guards:
+    name: Repository guards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          # Full history so the secret scan can inspect every commit.
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: No committed credential files
+        run: node scripts/guards/credential-guard.mjs
+
+      - name: No retired identifiers in runtime code
+        run: node scripts/guards/identifier-guard.mjs
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dependency audit (report only)
+        run: |
+          npm audit --audit-level=high --omit=dev || \
+            echo "::warning::npm audit reported advisories; review before release"
