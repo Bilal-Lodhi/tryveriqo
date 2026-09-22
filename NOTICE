@@ -1,0 +1,63 @@
+Assessment Integrity Platform
+Copyright 2026 Muhammad Bilal Raza Lodhi (Assessment Integrity Platform Contributors)
+
+This product includes software developed as part of this project.
+
+================================================================================
+PROVENANCE
+================================================================================
+
+This repository is derived from an earlier open-source assessment product that
+was published in the repository `Google-Cloud-Hackathon`.
+
+  Source repository commit : 644e4bfd0a7ac0a0eeeb2c58584aad28150730e0
+  Extraction date          : see the import commit in this repository's history
+  Licence of the source    : Apache License 2.0
+
+The source work was created by Muhammad Bilal Raza Lodhi and is used here under
+the terms of the Apache License 2.0, which permits derivative works provided the
+original copyright notice and attribution are preserved.
+
+Substantial changes were made in this repository, including but not limited to:
+
+  * a new repository layout, build, container and continuous-integration setup;
+  * a mandatory authentication and authorisation boundary that did not exist in
+    the source;
+  * a consolidated MongoDB schema and a single MCP tool registry;
+  * revised configuration, environment handling and documentation.
+
+The extracted work is therefore a modified derivative, not a verbatim copy. The
+original copyright notice in LICENSE is retained unchanged, and this NOTICE file
+records the derivation as required by section 4(d) of the licence.
+
+================================================================================
+THIRD-PARTY COMPONENTS
+================================================================================
+
+This project depends on third-party open-source packages. Their licences are
+recorded in their own distributions under node_modules/ and, for the console,
+in the Flutter package cache. The principal direct dependencies and their
+licences are:
+
+  hono                                  MIT
+  @hono/node-server                     MIT
+  @google/genai                         Apache-2.0
+  dotenv                                BSD-2-Clause
+  mongodb                               Apache-2.0
+  @modelcontextprotocol/sdk             MIT
+  typescript                            Apache-2.0
+  tsx                                   MIT
+  Flutter SDK and flutter_lints         BSD-3-Clause
+  provider (Dart)                       MIT
+  http (Dart)                           BSD-3-Clause
+  cupertino_icons (Dart)                MIT
+
+No third-party component in this dependency set is copyleft in a way that would
+require this project to be relicensed.
+
+================================================================================
+TRADEMARKS
+================================================================================
+
+No trademark rights are granted by this NOTICE. The product name used in this
+repository is a working placeholder and has not been finally chosen.

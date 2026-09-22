@@ -1,0 +1,26 @@
+# Normalise line endings in the repository.
+#
+# Shell scripts and container entrypoints must keep LF endings: they are executed
+# inside an Alpine Linux image, where a CRLF shebang fails with
+# "not found" for an interpreter that plainly exists.
+
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+Dockerfile text eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.tar binary

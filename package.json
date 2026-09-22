@@ -1,26 +1,30 @@
 {
-  "name": "google-cloud-rapid-agent-hackathon",
-  "version": "1.0.0",
+  "name": "assessment",
+  "version": "0.1.0",
   "private": true,
-  "description": "Multi-agent evaluation ecosystem for MongoDB partner track - Google Cloud Rapid Agent Hackathon 2026",
+  "description": "Assessment integrity platform — AI-assisted assessment generation with candidate session telemetry and reviewer integrity signals",
   "license": "Apache-2.0",
+  "type": "module",
   "workspaces": [
-    "sandbox/hono-api",
-    "sandbox/mcp-server"
+    "packages/mcp-mongodb",
+    "apps/api"
   ],
   "scripts": {
-    "build": "npm run build -w sandbox/hono-api && npm run build -w sandbox/mcp-server",
-    "build:api": "npm run build -w sandbox/hono-api",
-    "build:mcp": "npm run build -w sandbox/mcp-server",
-    "dev:api": "npm run dev -w sandbox/hono-api",
-    "dev:mcp": "npm run dev -w sandbox/mcp-server",
-    "dev": "cd sandbox && npm run dev",
-    "dev:backend": "npm run build && node sandbox/start-services.js",
-    "start": "node sandbox/start-services.js",
-    "deploy": "npm run deploy --workspace=sandbox/hono-api"
+    "build": "npm run build -w @assessment/mcp-mongodb && npm run build -w @assessment/api",
+    "build:api": "npm run build -w @assessment/api",
+    "build:mcp": "npm run build -w @assessment/mcp-mongodb",
+    "clean": "npm run clean -w @assessment/mcp-mongodb && npm run clean -w @assessment/api",
+    "typecheck": "tsc -b --force",
+    "test": "npm run test:backend && npm run test:console",
+    "test:backend": "npm run build:mcp && npm run test -w @assessment/api && npm run test -w @assessment/mcp-mongodb",
+    "test:console": "node scripts/flutter.mjs test",
+    "dev": "node scripts/dev-services.mjs",
+    "start": "node scripts/dev-services.mjs",
+    "lint:console": "node scripts/flutter.mjs analyze",
+    "smoke": "node scripts/smoke.mjs",
+    "verify": "node scripts/verify-lifecycle.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
-  },
-  "dependencies": {}
+  }
 }

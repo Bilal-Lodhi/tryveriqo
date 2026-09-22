@@ -1,14 +1,15 @@
-# ─── Dependencies ──────────────────────────────────────────
+# ─── Dependencies ───────────────────────────────────────────────
 node_modules/
 
-# ─── Build output ──────────────────────────────────────────
+# ─── Build output ───────────────────────────────────────────────
 dist/
 build/
 .dart_tool/
 .packages
 *.tsbuildinfo
 
-# ─── Environment secrets (NEVER commit .env files) ────────
+# ─── Environment and credentials (never commit) ─────────────────
+# Only the template is tracked. Every secret lives in the environment.
 .env
 **/.env
 *.env
@@ -16,23 +17,33 @@ build/
 !*.env.template
 !*.env.sample
 application_default_credentials.json
+*.pem
+*.p12
+*.pfx
 
-# ─── Generated documentation (authored by build tools / AI) ─
-*.md
-!README.md
-!LICENSE.md
-!CONTRIBUTING.md
-!CHANGELOG.md
-!CODE_OF_CONDUCT.md
-!SECURITY.md
+# ─── Test and coverage output ───────────────────────────────────
+coverage/
+.nyc_output/
+test-results/
+*.lcov
 
-# ─── Hackathon audit reports (local only) ─────────────────
-HACKATHON-COMPLIANCE-AUDIT.md
-_verify.txt
+# ─── Flutter / Dart ─────────────────────────────────────────────
+apps/console/.flutter-plugins
+apps/console/.flutter-plugins-dependencies
 
-# ─── OS & editor artifacts ────────────────────────────────
+# ─── Local scratch and editor artifacts ─────────────────────────
 *.log
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+*.swp
+*~
+
+# ─── Local database volumes (if ever mounted into the tree) ─────
+mongo-data/
+
+# ─── Documentation is source, not build output ──────────────────
+# The historical repository carried a blanket `*.md` rule that silently kept
+# documentation out of version control; four of its own documentation files were
+# never committed because of it. Deliberately absent here.

@@ -1,0 +1,116 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Assessment integrity platform — local stack
+#
+#   cp .env.example .env
+#   docker compose up --build
+#
+# MongoDB runs here, so no external database is required. Collection indexes are
+# created automatically when the MCP tool server connects.
+#
+# ENVIRONMENT defaults to development, which lets the API generate ephemeral
+# credentials. Setting ENVIRONMENT=production makes startup fail closed unless
+# every secret in .env is filled in with a real value.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: assessment
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGODB_DATABASE:-assessment}
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      # Exposed for inspection with mongosh or Compass. Remove to keep the
+      # database reachable only from the compose network.
+      - "${MONGO_PORT:-27017}:27017"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "--eval",
+          "db.adminCommand('ping').ok",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # This service runs only the tool transport; the API runs in the service
+    # below. They share an image so there is one build.
+    entrypoint: ["dumb-init", "--"]
+    command:
+      ["node", "./packages/mcp-mongodb/dist/http-server-main.js"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-assessment}
+      MCP_PORT: "3001"
+      MCP_HOST: 0.0.0.0
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    entrypoint: ["dumb-init", "--"]
+    command: ["node", "./apps/api/dist/index.js"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      PORT: "8080"
+      MONGODB_URI: mongodb://mongo:27017
+      MONGODB_DATABASE: ${MONGODB_DATABASE:-assessment}
+      MCP_SERVER_ENDPOINT: http://mcp:3001
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+      MCP_TIMEOUT_MS: ${MCP_TIMEOUT_MS:-5000}
+      # Authentication. In development the API generates ephemeral values and
+      # prints the operator token once; in production both are mandatory.
+      ASSESSMENT_API_TOKEN: ${ASSESSMENT_API_TOKEN:-}
+      ASSESSMENT_SESSION_SECRET: ${ASSESSMENT_SESSION_SECRET:-}
+      CANDIDATE_SESSION_TTL_SECONDS: ${CANDIDATE_SESSION_TTL_SECONDS:-7200}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      # AI provider.
+      AI_PROVIDER_MODE: ${AI_PROVIDER_MODE:-gemini-api}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_VERTEX_PROJECT: ${GEMINI_VERTEX_PROJECT:-}
+      GEMINI_VERTEX_LOCATION: ${GEMINI_VERTEX_LOCATION:-us-central1}
+      AI_MODEL: ${AI_MODEL:-gemini-2.5-flash}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-65536}
+      AI_TEMPERATURE: ${AI_TEMPERATURE:-0.2}
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-90000}
+      # Integrity thresholds.
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-7200}
+      MAX_PASTE_EVENTS: ${MAX_PASTE_EVENTS:-5}
+      MIN_HUMAN_KEYSTROKE_MS: ${MIN_HUMAN_KEYSTROKE_MS:-80}
+      PLAGIARISM_THRESHOLD: ${PLAGIARISM_THRESHOLD:-0.75}
+      ALERT_SCORE_THRESHOLD: ${ALERT_SCORE_THRESHOLD:-50}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mcp:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+volumes:
+  mongo-data:
