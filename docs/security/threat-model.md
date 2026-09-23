@@ -226,6 +226,30 @@ These are deliberate, documented limitations of a self-hosted v0.1.0:
    product says so in its own UI.
 5. **Single tenancy.** There is no tenancy model, so there is nothing to bypass,
    and nothing that isolates one operator's data from another's.
+6. **No load, stress or denial-of-service testing.** The in-process rate limits
+   exist to bound accidental amplification, not to withstand a determined
+   attacker, and they have not been tested under load. A public deployment needs
+   an edge limiter in front of it. Nothing here is a capacity or resilience claim.
+7. **The Vertex AI transport is not live-verified.** It is implemented and covered
+   by request-construction tests, but it has never been exercised against a real
+   Google Cloud project or with real Application Default Credentials. A deployment
+   that chooses `AI_PROVIDER_MODE=vertex` is relying on an unverified path; the
+   `gemini-api` mode is the one with recorded live evidence.
+
+### Telemetry sensitivity
+
+Telemetry is the most sensitive data this system holds and it deserves to be
+stated plainly rather than implied. It records **typing cadence, the content of
+pasted and copied text, and window focus over time** for a named individual, and
+the integrity reports built from it are allegations-adjacent. Treat the database
+as personal data:
+
+* access is limited to the operator credential, but that credential is shared and
+  there is no per-reviewer audit trail (accepted risk 2);
+* there is no retention or deletion policy beyond terminating a session, which
+  removes that session with its telemetry and reports;
+* a deployment is responsible for its own lawful basis, retention window and
+  subject-access handling. This software does not implement any of those.
 
 ## What would change the model
 
