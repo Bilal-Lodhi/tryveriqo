@@ -2,16 +2,22 @@
  * AI provider parser fixture tests.
  *
  * The provider boundary is the only place a paid model is ever contacted. These
- * tests replace the SDK module itself with a fixture double, so the real
- * request construction, retry policy, JSON recovery and response normalisation
- * paths execute without any network call.
+ * tests inject a fixture double for the provider SDK, so the real request
+ * construction, retry policy, JSON recovery and response normalisation paths
+ * execute without any network call.
+ *
+ * The double is injected through the client's `loadSdk` argument rather than
+ * through Node's `mock.module`. Module mocking with `exports` is experimental
+ * and does not substitute the module on Node 22, which made this suite pass on
+ * Node 24 and fail on Node 22 with "GoogleGenAI is not a constructor".
  */
 
-import { test, describe, mock } from "node:test";
+import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
 import { testConfig } from "./helpers.js";
 import type { GeneratedTestSuite, IntegrityReport } from "../src/types.js";
+import type { GenAiLoader, GenAiModule } from "../src/agents/gemini-client.js";
 
 // ─── SDK double ────────────────────────────────────────────────────
 
@@ -26,10 +32,14 @@ const sdkState = {
   responses: [] as string[],
   requests: [] as GenerateContentRequest[],
   throwOnCall: null as Error | null,
+  /** Set when a test needs the double to reject at construction time. */
+  constructorThrows: null as Error | null,
 };
 
 class FakeGoogleGenAI {
-  constructor(readonly options: Record<string, unknown>) {}
+  constructor(readonly options: Record<string, unknown>) {
+    if (sdkState.constructorThrows) throw sdkState.constructorThrows;
+  }
 
   readonly models = {
     generateContent: async (request: GenerateContentRequest) => {
@@ -43,18 +53,19 @@ class FakeGoogleGenAI {
   };
 }
 
-mock.module("@google/genai", {
-  exports: {
-    GoogleGenAI: FakeGoogleGenAI,
-    HarmCategory: {
-      HARM_CATEGORY_DANGEROUS_CONTENT: "dangerous",
-      HARM_CATEGORY_HARASSMENT: "harassment",
-      HARM_CATEGORY_HATE_SPEECH: "hate",
-      HARM_CATEGORY_SEXUALLY_EXPLICIT: "sexual",
-    },
-    HarmBlockThreshold: { BLOCK_ONLY_HIGH: "block_only_high" },
+/** The fixture module the client receives in place of `@google/genai`. */
+const fakeSdk = {
+  GoogleGenAI: FakeGoogleGenAI,
+  HarmCategory: {
+    HARM_CATEGORY_DANGEROUS_CONTENT: "dangerous",
+    HARM_CATEGORY_HARASSMENT: "harassment",
+    HARM_CATEGORY_HATE_SPEECH: "hate",
+    HARM_CATEGORY_SEXUALLY_EXPLICIT: "sexual",
   },
-});
+  HarmBlockThreshold: { BLOCK_ONLY_HIGH: "block_only_high" },
+} as unknown as GenAiModule;
+
+const loadFakeSdk: GenAiLoader = async () => fakeSdk;
 
 const { GeminiAssessmentClient, ProviderRequestError } = await import(
   "../src/agents/gemini-client.js"
@@ -64,10 +75,11 @@ function resetSdk(responses: string[], throwOnCall: Error | null = null): void {
   sdkState.responses = responses;
   sdkState.requests = [];
   sdkState.throwOnCall = throwOnCall;
+  sdkState.constructorThrows = null;
 }
 
 function makeClient(): InstanceType<typeof GeminiAssessmentClient> {
-  return new GeminiAssessmentClient(testConfig(), () => undefined);
+  return new GeminiAssessmentClient(testConfig(), () => undefined, loadFakeSdk);
 }
 
 // ─── Fixtures ──────────────────────────────────────────────────────
@@ -207,7 +219,7 @@ describe("request construction", () => {
         requestTimeoutMs: 5000,
       },
     });
-    const client = new GeminiAssessmentClient(config, () => undefined);
+    const client = new GeminiAssessmentClient(config, () => undefined, loadFakeSdk);
     assert.equal(client.isConfigured(), true);
 
     resetSdk([JSON.stringify(SUITE_FIXTURE)]);
@@ -228,7 +240,10 @@ describe("request construction", () => {
         requestTimeoutMs: 5000,
       },
     });
-    assert.equal(new GeminiAssessmentClient(config, () => undefined).isConfigured(), false);
+    assert.equal(
+      new GeminiAssessmentClient(config, () => undefined, loadFakeSdk).isConfigured(),
+      false,
+    );
   });
 });
 

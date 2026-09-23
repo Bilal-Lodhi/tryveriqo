@@ -22,7 +22,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "start": "node dist/http-server-main.js",
     "start:stdio": "node dist/stdio-server.js",
-    "test": "node --test --experimental-test-module-mocks --import tsx test/*.test.ts"
+    "test": "node --test --import tsx test/*.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

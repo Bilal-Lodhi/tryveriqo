@@ -79,14 +79,28 @@ export class ProviderRequestError extends Error {
 
 // ─── @google/genai SDK, lazy-loaded for fast cold starts ───────────
 
-type GenAiModule = typeof import("@google/genai");
+export type GenAiModule = typeof import("@google/genai");
+
+/**
+ * How the SDK is obtained. The production value imports the real package;
+ * tests inject a double here.
+ *
+ * This is an explicit seam rather than module mocking on purpose. Node's
+ * `mock.module` with `exports` is experimental and does not substitute the
+ * module on Node 22, so a mocked suite passed on Node 24 and failed on Node 22
+ * with "GoogleGenAI is not a constructor". Injecting the loader makes the
+ * substitution a normal function argument that behaves identically on every
+ * supported Node version.
+ */
+export type GenAiLoader = () => Promise<GenAiModule>;
 
 let sdkPromise: Promise<GenAiModule> | null = null;
 
-async function loadGenAiSdk(): Promise<GenAiModule> {
+/** The default loader: imports the real SDK once and caches the module. */
+export const defaultGenAiLoader: GenAiLoader = () => {
   sdkPromise ??= import("@google/genai");
   return sdkPromise;
-}
+};
 
 const MAX_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 1000;
@@ -123,10 +137,20 @@ async function withTimeout<T>(
 export class GeminiAssessmentClient implements AssessmentAiClient {
   private readonly ai: AiProviderConfigView;
   private readonly log: (message: string) => void;
+  private readonly loadSdk: GenAiLoader;
 
-  constructor(config: AppConfig, log: (message: string) => void = console.log) {
+  constructor(
+    config: AppConfig,
+    log: (message: string) => void = console.log,
+    /**
+     * Overrides how the provider SDK is obtained. Production always uses the
+     * default; the test suite injects a fixture double through this argument.
+     */
+    loadSdk: GenAiLoader = defaultGenAiLoader,
+  ) {
     this.ai = config.ai;
     this.log = log;
+    this.loadSdk = loadSdk;
   }
 
   /** True when the configured transport has the credentials it needs. */
@@ -135,7 +159,7 @@ export class GeminiAssessmentClient implements AssessmentAiClient {
   }
 
   private async createClient(): Promise<InstanceType<GenAiModule["GoogleGenAI"]>> {
-    const { GoogleGenAI } = await loadGenAiSdk();
+    const { GoogleGenAI } = await this.loadSdk();
 
     if (this.ai.mode === "vertex") {
       if (this.ai.projectId.length === 0) {
@@ -220,7 +244,7 @@ export class GeminiAssessmentClient implements AssessmentAiClient {
     }
 
     const ai = await this.createClient();
-    const { HarmCategory, HarmBlockThreshold } = await loadGenAiSdk();
+    const { HarmCategory, HarmBlockThreshold } = await this.loadSdk();
 
     const request = {
       model: this.ai.model,
