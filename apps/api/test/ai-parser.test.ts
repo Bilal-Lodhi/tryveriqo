@@ -305,6 +305,84 @@ Line two",
       (error: unknown) => error instanceof ProviderRequestError,
     );
   });
+
+  test("replaces the placeholder UUID a model repeats for every id", async () => {
+    // Regression: observed live against gemini-2.5-flash. Asked for "a unique
+    // UUID" for every identifier, the model returned the same memorised example
+    // on every call. Trusting it made every suite share one suiteId, which
+    // collided on the unique index and lost the suite on persistence.
+    const PLACEHOLDER = "a1b2c3d4-e5f6-7890-1234-567890abcdef";
+    resetSdk([
+      JSON.stringify({
+        metadata: { suiteId: PLACEHOLDER },
+        roles: [],
+        competencies: [{ competencyId: PLACEHOLDER, name: "Arrays", description: "d", weight: 1 }],
+        problems: [
+          {
+            problemId: PLACEHOLDER,
+            competencyId: PLACEHOLDER,
+            problemType: "coding",
+            title: "Merge",
+            body: "b",
+            difficulty: "beginner",
+            testCases: [{ caseId: PLACEHOLDER, input: "1", expectedOutput: "1", isPublic: false }],
+            options: [{ optionId: PLACEHOLDER, text: "t", isCorrect: true, explanation: "e" }],
+          },
+        ],
+        testingMatrices: [{ matrixId: PLACEHOLDER, problemId: PLACEHOLDER }],
+      }),
+    ]);
+
+    const suite = await makeClient().generateTestSuite("prompt", "backend", 1);
+
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    assert.notEqual(suite.metadata.suiteId, PLACEHOLDER, "the placeholder suiteId must be replaced");
+    assert.match(suite.metadata.suiteId, uuid);
+    assert.match(suite.competencies[0]!.competencyId, uuid);
+    assert.match(suite.problems[0]!.problemId, uuid);
+    assert.match(suite.problems[0]!.testCases![0]!.caseId!, uuid);
+    assert.match(suite.problems[0]!.options![0]!.optionId!, uuid);
+    assert.match(suite.testingMatrices[0]!.matrixId, uuid);
+
+    // The problem must still name a competency that exists, so scoring and
+    // review can join on it.
+    assert.equal(
+      suite.problems[0]!.competencyId,
+      suite.competencies[0]!.competencyId,
+      "the competency reference must survive the id replacement",
+    );
+
+    // A second generation must not reproduce the same suite id.
+    resetSdk([
+      JSON.stringify({
+        metadata: { suiteId: PLACEHOLDER },
+        roles: [],
+        competencies: [],
+        problems: [],
+        testingMatrices: [],
+      }),
+    ]);
+    const second = await makeClient().generateTestSuite("prompt", "backend", 1);
+    assert.notEqual(
+      second.metadata.suiteId,
+      suite.metadata.suiteId,
+      "two generations must not collide on suite id",
+    );
+  });
+
+  test("a model-supplied non-placeholder id is still authoritative", async () => {
+    resetSdk([
+      JSON.stringify({
+        metadata: { suiteId: "8f14e45f-ceea-467a-9575-1b1f4a2f0c3d" },
+        roles: [],
+        competencies: [],
+        problems: [],
+        testingMatrices: [],
+      }),
+    ]);
+    const suite = await makeClient().generateTestSuite("prompt", "backend", 1);
+    assert.equal(suite.metadata.suiteId, "8f14e45f-ceea-467a-9575-1b1f4a2f0c3d");
+  });
 });
 
 describe("integrity parsing", () => {

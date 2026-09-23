@@ -1,5 +1,5 @@
 /**
- * Gemini client — the single AI provider boundary for the Assessment API.
+ * Gemini client — the single AI provider boundary for the tryveriqo API.
  *
  * Provider choice for v0.1.0 is Gemini, which is what this product was built
  * against. Two transports are supported, selected explicitly by
@@ -321,37 +321,54 @@ export class GeminiAssessmentClient implements AssessmentAiClient {
    * Repairs the parts of a suite that a language model may omit or malform.
    * Generated ids must be stable and unique so persistence and later review
    * can join on them reliably.
+   *
+   * Ids the model supplies are treated as authoritative, because a suite's
+   * internal cross-references (a problem naming its competency, a matrix naming
+   * its problem) are only meaningful against the ids the model itself used.
+   *
+   * The exception is a *placeholder* id. Asked for "a unique UUID", Gemini 2.5
+   * Flash repeatedly answers with the same memorised example — observed live as
+   * `a1b2c3d4-e5f6-7890-1234-567890abcdef`. Every suite would then carry an
+   * identical `suiteId` and collide on the unique index. A placeholder is
+   * therefore replaced with a real UUID rather than trusted.
    */
   private normalizeSuite(suite: GeneratedTestSuite): GeneratedTestSuite {
     const now = new Date().toISOString();
-    const suiteId = suite.metadata?.suiteId || crypto.randomUUID();
+    const suiteId = realId(suite.metadata?.suiteId);
 
     const competencies = (suite.competencies ?? []).map((competency) => ({
       ...competency,
-      competencyId: competency.competencyId || crypto.randomUUID(),
+      competencyId: realId(competency.competencyId),
       subCompetencies: competency.subCompetencies ?? [],
     }));
 
     const fallbackCompetencyId = competencies[0]?.competencyId ?? "unassigned";
+    const declaredCompetencyIds = new Set(competencies.map((c) => c.competencyId));
 
     const problems = (suite.problems ?? []).map((problem) => ({
       ...problem,
-      problemId: problem.problemId || crypto.randomUUID(),
-      competencyId: problem.competencyId || fallbackCompetencyId,
+      problemId: realId(problem.problemId),
+      // A problem must name a competency that actually exists, or review and
+      // scoring cannot join on it. The model's reference survives because the
+      // same input id always maps to the same output id above.
+      competencyId:
+        problem.competencyId && declaredCompetencyIds.has(problem.competencyId)
+          ? problem.competencyId
+          : fallbackCompetencyId,
       testCases: (problem.testCases ?? []).map((testCase) => ({
         ...testCase,
-        caseId: testCase.caseId || crypto.randomUUID(),
+        caseId: realId(testCase.caseId),
         timeoutMs: testCase.timeoutMs || 2000,
       })),
       options: (problem.options ?? []).map((option) => ({
         ...option,
-        optionId: option.optionId || crypto.randomUUID(),
+        optionId: realId(option.optionId),
       })),
     }));
 
     const testingMatrices = (suite.testingMatrices ?? []).map((matrix) => ({
       ...matrix,
-      matrixId: matrix.matrixId || crypto.randomUUID(),
+      matrixId: realId(matrix.matrixId),
     }));
 
     return {
@@ -628,6 +645,32 @@ export class GeminiAssessmentClient implements AssessmentAiClient {
 
 /** Narrowed view of the AI config used by the client. */
 type AiProviderConfigView = AppConfig["ai"];
+
+/**
+ * Identifiers a model returns when it is asked for a "unique UUID" and answers
+ * with a memorised example instead of generating one. Observed live against
+ * `gemini-2.5-flash`; the variants cover the same placeholder with different
+ * version/variant nibbles.
+ */
+const PLACEHOLDER_IDS = new Set([
+  "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+  "a1b2c3d4-e5f6-4789-8012-34567890abcd",
+  "b1c2d3e4-f5a6-7890-1234-567890abcdef",
+  "b1c2d3e4-f5a6-4789-8012-34567890abce",
+  "c1d2e3f4-a5b6-7890-1234-567890abcdef",
+  "c1d2e3f4-a5b6-4789-8012-34567890abcf",
+]);
+
+/**
+ * Returns a trustworthy identifier: the model's own value when it is present
+ * and not a known placeholder, otherwise a freshly generated UUID.
+ */
+function realId(value: string | undefined | null): string {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (trimmed.length === 0) return crypto.randomUUID();
+  if (PLACEHOLDER_IDS.has(trimmed.toLowerCase())) return crypto.randomUUID();
+  return trimmed;
+}
 
 function clampScore(value: unknown): number {
   const numeric = typeof value === "number" && Number.isFinite(value) ? value : 0;
