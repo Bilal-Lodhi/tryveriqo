@@ -9,10 +9,13 @@ them.**
 > behaviour indicators* that a human reviewer interprets. No output of this
 > system should be treated as proof that a candidate cheated.
 
-> **Status: v0.1.0 release candidate, not yet published.** The API, the console
-> and the datastore layer are built and tested locally, and the AI provider path
-> has been exercised against a live Gemini credential. See
-> [Release readiness](#release-readiness) for exactly what was observed.
+> **Status: v0.1.0 release candidate.** The source is published in this public
+> repository, but no version is tagged or released yet. The API, the console and
+> the datastore layer are built and tested, and the AI provider path has been
+> exercised against a live Gemini credential. See
+> [Release readiness](#release-readiness) for exactly what was observed, and
+> [docs/release/checklist.md](docs/release/checklist.md) for what remains before a
+> tagged release.
 
 ---
 

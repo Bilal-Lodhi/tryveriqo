@@ -4,43 +4,18 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] — release candidate
+## [0.1.0] — release candidate, not yet released
 
-The first release candidate. Not tagged and not published.
+The first independent release of tryveriqo. The source is published in the public
+repository and continuous integration is green on `main`, but **no version is
+tagged and no release is published**. What remains before a tag is tracked in
+`docs/release/checklist.md`.
 
-### Added
-
-* Product identity: the project is named **tryveriqo**, applied across the README,
-  package and service metadata, the API's `service` health field, the console
-  title and web manifest, the container project name and the documentation. The
-  API now reports `service=tryveriqo-api`.
-* A transitive dependency and licence inventory, covering the full resolved Node
-  closure (156 packages) and the locked Flutter/Dart closure (28 packages).
-  Recorded in `NOTICE`.
-* Live provider verification against the Gemini Developer API, recorded in
-  `docs/release/verification.md`, and a live end-to-end workflow run.
-* Explicit known-limitations documentation for open candidate registration and for
-  the console operator token embedded in a web bundle.
-
-### Fixed
-
-* **Every generated suite collided on a single `suiteId`.** Asked for a unique
-  UUID, `gemini-2.5-flash` returns the same memorised placeholder on every call,
-  so the unique index on `metadata.suiteId` rejected the second suite. The API
-  reported success to the caller while the suite was lost. Placeholder ids are now
-  replaced in the parser, genuine model-supplied ids stay authoritative, a
-  problem can no longer reference an undeclared competency, and
-  `storeTestSuite` is idempotent on `metadata.suiteId`. Found by the live call;
-  covered by regression tests at both layers.
-* **Container supervision never noticed the tool transport dying.** The entrypoint
-  used `wait -n`, which under BusyBox `ash` does not return when a tracked child
-  dies after it has started blocking, so a container kept serving an API whose
-  datastore calls could not succeed. Replaced with explicit liveness polling.
-* `scripts/verify-lifecycle.mjs` asserted a session status that only holds on an
-  instance with no AI credential. It now expects `flagged` when an integrity
-  analysis ran and `in_progress` when it did not.
-
-## [Unreleased]
+This section covers the whole of the work that produced v0.1.0: the extraction
+from the historical repository, the hardening that followed, and the release
+preparation. Because the extracted baseline is this version's starting point
+rather than a prior release, it is recorded here rather than under its own
+heading.
 
 ### Added
 
@@ -69,6 +44,19 @@ The first release candidate. Not tagged and not published.
   gitleaks in CI.
 * Failure-containment tests that prove an AI-provider outage does not reject
   telemetry the server has already durably accepted.
+* Product identity: the project is named **tryveriqo**, applied across the README,
+  package and service metadata, the API's `service` health field, the console
+  title and web manifest, the container project name and the documentation. The
+  API reports `service=tryveriqo-api`.
+* A transitive dependency and licence inventory, covering the full resolved Node
+  closure (156 packages) and the locked Flutter/Dart closure (28 packages).
+  Recorded in `NOTICE`.
+* Live provider verification against the Gemini Developer API, recorded in
+  `docs/release/verification.md`, together with a live end-to-end workflow run.
+* Explicit known-limitations documentation for open candidate registration and for
+  the console operator token embedded in a web bundle.
+* A release checklist that separates hard blockers from post-release improvements
+  and deliberately deferred items (`docs/release/checklist.md`).
 
 ### Changed
 
@@ -99,6 +87,9 @@ The first release candidate. Not tagged and not published.
   incomparable; that was reverted.
 * Structured integrity flags are preserved verbatim through review. Flags stored
   as bare strings by earlier versions are widened on read.
+* The provider SDK is obtained through an injectable loader rather than Node's
+  experimental module mocking, so the test suite behaves identically on every
+  supported Node version. Production still lazily imports and caches the real SDK.
 
 ### Removed
 
@@ -111,6 +102,31 @@ The first release candidate. Not tagged and not published.
 * The `*.md` blanket ignore rule that had been excluding documentation from the
   repository.
 
+### Fixed
+
+* **Every generated suite collided on a single `suiteId`.** Asked for a unique
+  UUID, `gemini-2.5-flash` returns the same memorised placeholder on every call,
+  so the unique index on `metadata.suiteId` rejected the second suite. The API
+  reported success to the caller while the suite was lost. Placeholder ids are now
+  replaced in the parser, genuine model-supplied ids stay authoritative, a
+  problem can no longer reference an undeclared competency, and `storeTestSuite`
+  is idempotent on `metadata.suiteId`. Found by the live provider call; covered by
+  regression tests at both layers.
+* **Container supervision never noticed the tool transport dying.** The entrypoint
+  used `wait -n`, which under BusyBox `ash` does not return when a tracked child
+  dies after it has started blocking, so a container kept serving an API whose
+  datastore calls could not succeed. Replaced with explicit liveness polling.
+* **The MCP transport connected to the datastore before validating its
+  configuration.** The production auth-token check lives in the server
+  constructor, so an unreachable database masked an unprotected tool surface.
+  The constructor now runs first, making the fail-closed guarantee independent of
+  datastore reachability.
+* `scripts/verify-lifecycle.mjs` asserted a session status that only holds on an
+  instance with no AI credential. It now expects `flagged` when an integrity
+  analysis ran and `in_progress` when it did not.
+* The console source now satisfies `dart format --set-exit-if-changed`, which CI
+  enforces.
+
 ### Security
 
 * Failed-closed production startup, verified by a test that spawns the real
@@ -120,8 +136,7 @@ The first release candidate. Not tagged and not published.
 * Candidate tokens are HMAC-signed and scoped to a single candidate.
 * Telemetry ingestion bounds batch size and free-text field length.
 * The MCP tool surface requires its own token and refuses to start unprotected in
-  production.
-
-## [0.1.0] — unreleased candidate
-
-The initial version, prepared but **not tagged and not published**.
+  production, independently of whether the datastore is reachable.
+* The secret scan resolves the commit range an event introduced and falls back to
+  full-history detection when there is no usable range, so it cannot report
+  success while examining zero commits.
