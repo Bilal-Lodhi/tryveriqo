@@ -13,11 +13,11 @@ const host = process.env["MCP_HOST"] ?? "127.0.0.1";
 const store = new MongoStore();
 
 async function main(): Promise<void> {
-  await store.connect();
-  console.error(
-    `[mcp-http] Connected to MongoDB database "${store.databaseNameInUse}"`,
-  );
-
+  // Build the server before touching the datastore. Construction is where the
+  // production auth-token check lives, so an unprotected tool surface is
+  // refused immediately rather than after a connection attempt. That keeps the
+  // fail-closed guarantee independent of whether MongoDB happens to be
+  // reachable, which is what makes it testable without a database.
   const server = createMcpHttpServer({
     store,
     port: Number.isFinite(port) ? port : 3001,
@@ -29,6 +29,11 @@ async function main(): Promise<void> {
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0),
   });
+
+  await store.connect();
+  console.error(
+    `[mcp-http] Connected to MongoDB database "${store.databaseNameInUse}"`,
+  );
 
   await server.listen();
 
