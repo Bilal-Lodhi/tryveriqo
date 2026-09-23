@@ -2,18 +2,20 @@
 
 ## Supported versions
 
-This project is a **v0.1.0 release candidate** and has not been published as a
-release. Security fixes are applied to the default branch only. There are no
-maintained older versions.
+This project is a **v0.1.0 release candidate**. The source is public, but no
+version has been tagged or released yet. Security fixes are applied to the default
+branch only. There are no maintained older versions.
 
 ## Reporting a vulnerability
 
 Please **do not** open a public issue for a security problem.
 
-Report it privately through GitHub's
-[private vulnerability reporting](https://github.com/Bilal-Lodhi/tryveriqo/security/advisories/new)
-on the repository, or contact a maintainer directly if that channel is
-unavailable.
+Report it privately through this repository's
+[private vulnerability reporting](https://github.com/Bilal-Lodhi/tryveriqo/security/advisories/new),
+which is enabled. That is the preferred channel and it keeps the report private
+between you and the maintainer. If it is unavailable to you for any reason, open a
+minimal public issue that says only that you have a security report and asks for a
+private channel — do not put the details in the issue.
 
 Please include:
 

@@ -12,8 +12,9 @@
 
 ## Before you open an issue
 
-This project is a **v0.1.0 candidate** that has not been published as a release.
-Maintainer time is limited, so please:
+This project is a **v0.1.0 release candidate**. The source is public, but no
+version has been tagged or released yet, so there are no supported released
+versions to report against. Maintainer time is limited, so please:
 
 1. Read the [README](README.md) and [docs/configuration.md](docs/configuration.md).
 2. Reproduce against a current build of the default branch.
