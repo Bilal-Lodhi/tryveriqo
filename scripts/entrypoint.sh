@@ -71,22 +71,40 @@ echo "[entrypoint] API pid=${API_PID}"
 
 # Supervise: whichever process exits first decides the container's fate. The
 # API's exit code is the one that matters, so it is preserved.
+#
+# This polls liveness explicitly rather than using `wait -n`. Under BusyBox ash
+# (the shell in the Alpine runtime image) `wait -n` does not return when a
+# tracked child dies *after* it has started blocking — reproduced against this
+# image. A container built on it therefore never noticed the tool transport
+# dying: it kept serving an API whose datastore calls could no longer succeed.
+# Polling `kill -0` is portable and is what makes the supervision real.
 set +e
-if [ -n "${MCP_PID}" ]; then
-  wait -n "${API_PID}" "${MCP_PID}"
-  first_exit=$?
-  if kill -0 "${API_PID}" 2>/dev/null; then
-    echo "[entrypoint] ERROR: MCP transport exited unexpectedly (code ${first_exit})" >&2
-    kill -TERM "${API_PID}" 2>/dev/null || true
-    wait "${API_PID}" 2>/dev/null
-    EXIT_CODE="${first_exit}"
+API_ALIVE=0
+MCP_ALIVE=0
+
+while :; do
+  kill -0 "${API_PID}" 2>/dev/null && API_ALIVE=1 || API_ALIVE=0
+  if [ -n "${MCP_PID}" ]; then
+    kill -0 "${MCP_PID}" 2>/dev/null && MCP_ALIVE=1 || MCP_ALIVE=0
   else
-    wait "${API_PID}" 2>/dev/null
-    EXIT_CODE=$?
+    MCP_ALIVE=0
   fi
-else
-  wait "${API_PID}"
+
+  [ "${API_ALIVE}" -eq 0 ] && break
+  [ -n "${MCP_PID}" ] && [ "${MCP_ALIVE}" -eq 0 ] && break
+
+  sleep 1
+done
+
+if [ "${API_ALIVE}" -eq 0 ]; then
+  # The API is the supervised process; its exit code is the container's.
+  wait "${API_PID}" 2>/dev/null
   EXIT_CODE=$?
+else
+  echo "[entrypoint] ERROR: MCP transport exited unexpectedly" >&2
+  kill -TERM "${API_PID}" 2>/dev/null || true
+  wait "${API_PID}" 2>/dev/null
+  EXIT_CODE=1
 fi
 set -e
 
