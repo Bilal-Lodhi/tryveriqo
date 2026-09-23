@@ -1,5 +1,5 @@
 /**
- * Authentication and authorisation boundary for the Assessment API.
+ * Authentication and authorisation boundary for the tryveriqo API.
  *
  * Threat model (see docs/security/threat-model.md):
  *   - Candidate telemetry, review timelines and integrity reports are

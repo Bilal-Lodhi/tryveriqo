@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Assessment API + MCP tool server — multi-stage production image
+# tryveriqo API + MCP tool server — multi-stage production image
 #
 # Stage 1 compiles both TypeScript workspaces.
 # Stage 2 is a slim, non-root runtime that starts the HTTP MCP transport and

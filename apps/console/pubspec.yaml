@@ -1,5 +1,5 @@
-name: assessment_console
-description: "Assessment integrity review console — candidate sessions, telemetry timelines and integrity signals."
+name: tryveriqo_console
+description: "tryveriqo integrity review console — candidate sessions, telemetry timelines and integrity signals."
 publish_to: 'none'
 version: 0.1.0+1
 

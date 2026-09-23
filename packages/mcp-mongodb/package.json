@@ -2,7 +2,7 @@
   "name": "@assessment/mcp-mongodb",
   "version": "0.1.0",
   "private": true,
-  "description": "Model Context Protocol server for the Assessment integrity store (MongoDB)",
+  "description": "Model Context Protocol server for the tryveriqo integrity store (MongoDB)",
   "license": "Apache-2.0",
   "type": "module",
   "main": "./dist/index.js",

@@ -31,7 +31,7 @@ class GenerateResult {
   }
 }
 
-/// HTTP connectivity layer for the Assessment API.
+/// HTTP connectivity layer for the tryveriqo API.
 ///
 /// Two credentials exist and both are bearer tokens:
 ///   * [operatorToken] — the console/reviewer credential, supplied at build time

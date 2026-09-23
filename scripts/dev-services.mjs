@@ -94,7 +94,7 @@ const mcpPort = process.env.MCP_PORT ?? '3001';
 const apiPort = process.env.PORT ?? '8080';
 
 console.log(`
-${COLORS.dev}Assessment integrity platform — development stack${COLORS.reset}
+${COLORS.dev}tryveriqo — development stack${COLORS.reset}
   API  http://localhost:${apiPort}
   MCP  http://127.0.0.1:${mcpPort}  (internal)
   Mongo ${process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017'}

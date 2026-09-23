@@ -1,5 +1,5 @@
 /**
- * Assessment API entry point.
+ * tryveriqo API entry point.
  *
  * Fails closed: configuration is validated (and in production, secrets are
  * required) before the listener binds. No default credential exists, and

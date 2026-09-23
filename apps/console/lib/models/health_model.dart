@@ -1,9 +1,8 @@
-/// Health model for the Assessment console.
+/// Health model for the tryveriqo console.
 ///
 /// Mirrors the public `GET /health` payload. It reports process health, the
 /// configured AI provider/model and the database name — never a credential.
 library;
-
 
 class HealthStatus {
   final String status; // "healthy" | "degraded" | "down"
@@ -29,7 +28,7 @@ class HealthStatus {
   factory HealthStatus.fromJson(Map<String, dynamic> json) {
     return HealthStatus(
       status: json['status'] as String? ?? 'unknown',
-      service: json['service'] as String? ?? 'assessment-api',
+      service: json['service'] as String? ?? 'tryveriqo-api',
       apiVersion: json['version'] as String? ?? '0.0.0',
       environment: json['environment'] as String? ?? 'unknown',
       aiProvider: json['aiProvider'] as String? ?? 'unknown',

@@ -21,7 +21,7 @@ class AssessmentConsoleApp extends StatelessWidget {
     final identity = context.watch<IdentityProvider>();
 
     return MaterialApp(
-      title: 'Assessment console',
+      title: 'tryveriqo console',
       debugShowCheckedModeBanner: false,
       theme: themeProvider.lightTheme,
       darkTheme: themeProvider.darkTheme,

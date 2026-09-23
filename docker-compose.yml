@@ -1,5 +1,5 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Assessment integrity platform — local stack
+# tryveriqo — local stack
 #
 #   cp .env.example .env
 #   docker compose up --build
@@ -12,7 +12,7 @@
 # every secret in .env is filled in with a real value.
 # ─────────────────────────────────────────────────────────────────────────────
 
-name: assessment
+name: tryveriqo
 
 services:
   mongo:

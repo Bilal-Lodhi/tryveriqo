@@ -1,5 +1,5 @@
 /**
- * Environment configuration for the Assessment API.
+ * Environment configuration for the tryveriqo API.
  *
  * Configuration is explicit and fails closed: every value comes from the
  * process environment, and `loadConfig()` throws when production is missing a
@@ -10,7 +10,7 @@
 export type Environment = "development" | "test" | "production";
 
 export const APP_VERSION = "0.1.0";
-export const SERVICE_NAME = "assessment-api";
+export const SERVICE_NAME = "tryveriqo-api";
 
 export interface AiProviderConfig {
   /** "gemini-api" uses an API key; "vertex" uses Google Cloud ADC. */

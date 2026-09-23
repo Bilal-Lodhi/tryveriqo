@@ -2,7 +2,7 @@
   "name": "@assessment/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Assessment integrity API — assessment generation, candidate sessions, telemetry ingestion and reviewer timelines",
+  "description": "tryveriqo API — assessment generation, candidate sessions, telemetry ingestion and reviewer timelines",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",

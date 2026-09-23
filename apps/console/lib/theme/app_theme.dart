@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Light and dark themes for the Assessment console.
+/// Light and dark themes for the tryveriqo console.
 
 class AppTheme {
   static const Color brandTeal = Color(0xFF00BFA5);
@@ -25,9 +25,7 @@ class AppTheme {
           : const Color(0xFFF7F9FB),
       cardTheme: base.cardTheme.copyWith(
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: base.colorScheme.surfaceContainerLow,

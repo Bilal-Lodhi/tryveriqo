@@ -1,5 +1,5 @@
 /**
- * Core domain types for the Assessment integrity platform.
+ * Core domain types for the tryveriqo integrity platform.
  *
  * Vocabulary is deliberately Assessment-native: candidates sit assessments
  * made of problems; reviewer-facing signals are integrity signals backed by

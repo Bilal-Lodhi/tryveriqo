@@ -1,4 +1,4 @@
-/// Entry point for the Assessment review console.
+/// Entry point for the tryveriqo review console.
 ///
 /// Build-time configuration:
 ///   `--dart-define=API_BASE_URL=http://localhost:8080`

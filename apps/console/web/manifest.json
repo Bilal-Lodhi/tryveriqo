@@ -1,11 +1,11 @@
 {
-    "name": "assessment_console",
-    "short_name": "assessment",
+    "name": "tryveriqo console",
+    "short_name": "tryveriqo",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#10141A",
     "theme_color": "#00BFA5",
-    "description": "Assessment integrity review console — candidate sessions, telemetry timelines and integrity signals.",
+    "description": "tryveriqo integrity review console — candidate sessions, telemetry timelines and integrity signals.",
     "orientation": "landscape-primary",
     "prefer_related_applications": false,
     "icons": [

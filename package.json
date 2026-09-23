@@ -1,9 +1,17 @@
 {
-  "name": "assessment",
+  "name": "tryveriqo",
   "version": "0.1.0",
   "private": true,
-  "description": "Assessment integrity platform — AI-assisted assessment generation with candidate session telemetry and reviewer integrity signals",
+  "description": "tryveriqo — AI-assisted assessment generation with candidate session telemetry and reviewer integrity signals",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bilal-Lodhi/tryveriqo.git"
+  },
+  "homepage": "https://github.com/Bilal-Lodhi/tryveriqo#readme",
+  "bugs": {
+    "url": "https://github.com/Bilal-Lodhi/tryveriqo/issues"
+  },
   "type": "module",
   "workspaces": [
     "packages/mcp-mongodb",

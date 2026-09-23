@@ -1,9 +1,8 @@
-/// Candidate identity model for the Assessment console.
+/// Candidate identity model for the tryveriqo console.
 ///
 /// Matches `POST /api/v1/identity/set`, which registers a candidate and returns
 /// a short-lived, candidate-scoped session token.
 library;
-
 
 class IdentityPayload {
   final String displayName;
