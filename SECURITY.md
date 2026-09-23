@@ -2,9 +2,15 @@
 
 ## Supported versions
 
-This project is a **v0.1.0 release candidate**. The source is public, but no
-version has been tagged or released yet. Security fixes are applied to the default
-branch only. There are no maintained older versions.
+| Version | Supported |
+| --- | --- |
+| `v0.1.0` (pre-release) | Yes — current |
+| Anything older | No — there is no older version |
+
+`v0.1.0` is published as a **pre-release**. It is not production ready, and no
+version has been designated stable. Security fixes are applied to the default
+branch and to the current pre-release line; there are no maintained older
+versions.
 
 ## Reporting a vulnerability
 

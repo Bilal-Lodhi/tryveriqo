@@ -12,9 +12,10 @@
 
 ## Before you open an issue
 
-This project is a **v0.1.0 release candidate**. The source is public, but no
-version has been tagged or released yet, so there are no supported released
-versions to report against. Maintainer time is limited, so please:
+This project is at **v0.1.0, published as a pre-release**. It is not production
+ready, no version has been designated stable, and there is no hosted instance.
+When reporting, please say whether you are on the `v0.1.0` tag or on the default
+branch. Maintainer time is limited, so please:
 
 1. Read the [README](README.md) and [docs/configuration.md](docs/configuration.md).
 2. Reproduce against a current build of the default branch.
