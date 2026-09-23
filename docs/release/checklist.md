@@ -4,20 +4,22 @@ Status of tryveriqo as a v0.1.0 **pre-release**. This separates what genuinely
 blocks a tagged release from what is merely desirable, so a cosmetic gap is never
 mistaken for a blocker and a real blocker is never buried in a list of nice-to-haves.
 
-Current position: the source is published in the public repository, continuous
-integration is green on `main`, and **no tag or GitHub Release exists**.
+Current position: **v0.1.0 is tagged and published as a pre-release.** Every hard
+blocker below is closed. The remaining work is the non-blocking set in section B
+and the accepted boundaries in section C.
+
+Release: <https://github.com/Bilal-Lodhi/tryveriqo/releases/tag/v0.1.0>
 
 ---
 
 ## A. Hard blockers
 
-These must be true before a `v0.1.0` tag is pushed. Nothing else on this page
-blocks the release.
+These had to be true before the `v0.1.0` tag was pushed. All are now closed.
 
 | # | Blocker | State |
 | --- | --- | --- |
-| A1 | Release-preparation pull request merged into protected `main` through the normal review flow, with no branch-protection bypass | ☐ |
-| A2 | All four required checks green on the resulting merge commit: `Backend (build, typecheck, test)`, `Console (analyze, test)`, `Container image builds and fails closed`, `Repository guards` | ☐ |
+| A1 | Release-preparation pull request merged into protected `main` through the normal review flow, with no branch-protection bypass | ☑ PR #5 merged |
+| A2 | All four required checks green on the resulting merge commit: `Backend (build, typecheck, test)`, `Console (analyze, test)`, `Container image builds and fails closed`, `Repository guards` | ☑ green on `62b0f5a` |
 | A3 | Version `0.1.0` consistent across every manifest and reported by `GET /health` | ☑ verified on `main` |
 | A4 | No tracked secret; credential guard and gitleaks clean over full history | ☑ verified on `main` |
 | A5 | Real provider path verified against the live Gemini Developer API and recorded | ☑ recorded in [verification.md](verification.md) |
@@ -25,34 +27,44 @@ blocks the release.
 | A7 | Transitive dependency and licence audit complete with no unresolved blocker | ☑ recorded in [NOTICE](../../NOTICE) |
 | A8 | No placeholder product identity anywhere in the tree | ☑ verified on `main` |
 | A9 | `LICENSE` retains the Apache-2.0 source copyright notice verbatim, with the derivative notice beside it | ☑ verified on `main` |
-| A10 | Tag created and pre-release published, as its own explicitly authorised step | ☐ not authorised yet |
+| A10 | Tag created and pre-release published, as its own explicitly authorised step | ☑ annotated `v0.1.0` → `62b0f5a`, pre-release published |
 
-A1 and A2 are the only items this preparation phase can complete. A10 is a
-deliberate, separate authorisation.
+The tag is immutable and points at `62b0f5af1d1c1442a9150c0632d7c746b0c6046b`.
+Documentation committed to `main` afterwards does **not** move it.
 
-### A1 — known review constraint
+### A1 — the review constraint that had to be resolved
 
-`main` currently requires **one approving review**, and the repository has a
-single collaborator (`Bilal-Lodhi`, who is also the author of the pull request).
-GitHub does not permit a pull request author to approve their own pull request, so
-the review requirement cannot be satisfied by the only available account.
+`main` required **one approving review**, and the repository has a single
+collaborator (`Bilal-Lodhi`, who was also the author of the pull request). GitHub
+does not permit a pull request author to approve their own pull request — confirmed
+by the API rejecting the attempt with `422 "Review Can not approve your own pull
+request"` — so the review requirement could not be satisfied by the only available
+account.
 
-This is a configuration deadlock, not a code or documentation defect. The honest
+This was a configuration deadlock, not a code or documentation defect. The honest
 resolutions are, in preference order:
 
 1. add a second collaborator and have them review — preserves the protection
    exactly as configured;
 2. deliberately relax the review-count requirement to zero for a solo-maintainer
    project while keeping every required status check, the force-push ban, the
-   deletion ban and conversation resolution — this is a documented configuration
+   deletion ban and conversation resolution — a documented configuration
    decision, not a bypass;
 3. use an administrator bypass — **not recommended**, and it is the outcome this
    project's own process says to avoid.
 
+**How it was resolved:** the maintainer chose option 2. The approving-review
+requirement was set to zero by an explicit, recorded decision; the four required
+status checks (in strict mode), the force-push ban, the deletion ban and
+conversation resolution all remain enforced. No administrator bypass was used, and
+branch protection was never disabled.
+
 The status checks, force-push protection and deletion protection are the parts of
-branch protection that actually defend `main`; the approving-review rule is the
-part that deadlocks a one-person repository. Any change is recorded in the final
-report rather than applied silently.
+branch protection that actually defend `main`; the approving-review rule was the
+part that deadlocked a one-person repository. The practical consequence is that
+direct pushes to `main` are once again possible, so the review discipline is now a
+convention rather than a control until a second maintainer is added — at which
+point restoring a required review is the right move.
 
 ---
 

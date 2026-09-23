@@ -9,13 +9,14 @@ them.**
 > behaviour indicators* that a human reviewer interprets. No output of this
 > system should be treated as proof that a candidate cheated.
 
-> **Status: v0.1.0 release candidate.** The source is published in this public
-> repository, but no version is tagged or released yet. The API, the console and
-> the datastore layer are built and tested, and the AI provider path has been
-> exercised against a live Gemini credential. See
+> **Status: v0.1.0 pre-release.** Published as a pre-release at
+> [releases/tag/v0.1.0](https://github.com/Bilal-Lodhi/tryveriqo/releases/tag/v0.1.0).
+> The API, the console and the datastore layer are built and tested, and the AI
+> provider path has been exercised against a live Gemini credential. This is **not
+> production ready** and there is no hosted instance. See
 > [Release readiness](#release-readiness) for exactly what was observed, and
-> [docs/release/checklist.md](docs/release/checklist.md) for what remains before a
-> tagged release.
+> [docs/release/checklist.md](docs/release/checklist.md) for what is deliberately
+> still open.
 
 ---
 

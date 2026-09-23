@@ -4,12 +4,11 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] — release candidate, not yet released
+## [0.1.0] — 2026-09-23
 
-The first independent release of tryveriqo. The source is published in the public
-repository and continuous integration is green on `main`, but **no version is
-tagged and no release is published**. What remains before a tag is tracked in
-`docs/release/checklist.md`.
+The first independent release of tryveriqo, published as a **pre-release** at
+<https://github.com/Bilal-Lodhi/tryveriqo/releases/tag/v0.1.0>. It is not
+production ready and there is no hosted instance.
 
 This section covers the whole of the work that produced v0.1.0: the extraction
 from the historical repository, the hardening that followed, and the release
