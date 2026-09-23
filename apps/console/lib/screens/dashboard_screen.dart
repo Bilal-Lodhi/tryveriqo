@@ -124,7 +124,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       key: _scaffoldKey,
       appBar: AppBar(
-        title: Text(_tabIndex == 0 ? 'Review console' : 'Assessment generation'),
+        title: Text(
+          _tabIndex == 0 ? 'Review console' : 'Assessment generation',
+        ),
         actions: [
           IconButton(
             tooltip: 'Refresh session list',
@@ -393,11 +395,7 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.lock_outline,
-              size: 48,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.lock_outline, size: 48, color: theme.colorScheme.error),
             const SizedBox(height: 16),
             Text(
               message,

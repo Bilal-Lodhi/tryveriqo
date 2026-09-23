@@ -54,7 +54,8 @@ class _GeneratePanelState extends State<GeneratePanel> {
       final suite = result.suite;
       final problems = (suite?['problems'] as List<dynamic>?)?.length ?? 0;
       final suiteId =
-          (suite?['metadata'] as Map<String, dynamic>?)?['suiteId'] as String? ??
+          (suite?['metadata'] as Map<String, dynamic>?)?['suiteId']
+              as String? ??
           'unknown';
       setState(() {
         _summary =

@@ -14,9 +14,10 @@
  *   5. confirm review returns the timeline and the persisted submission snapshot
  *   6. terminate the session and confirm it is gone from the store
  *
- * It does not call the AI provider, so it runs without a model credential. When
- * no credential is configured the integrity report is legitimately absent, and
- * the check says so rather than failing.
+ * It does not call the AI provider directly, so it runs without a model
+ * credential. When no credential is configured the integrity report is
+ * legitimately absent; when one is configured the analysis runs and the session
+ * is expected to be promoted to `flagged`.
  *
  * Exit code 0 means every step behaved as required.
  */
@@ -183,7 +184,22 @@ if (reviewData) {
     reviewData.submittedCode === SUBMITTED_CODE,
     `length ${reviewData.submittedCode.length}, expected ${SUBMITTED_CODE.length}`,
   );
-  step('the session status is in_progress', reviewData.status === 'in_progress');
+
+  // The status depends on whether the integrity analysis ran, which depends on
+  // whether this instance has an AI credential.
+  //
+  // This batch always crosses a threshold — it contains a FULLSCREEN_EXIT, and
+  // `shouldAnalyze` treats any fullscreen exit as warranting a pass — so with a
+  // credential configured the analysis runs, scores the session and promotes it
+  // to `flagged`. Without one the report is legitimately absent and the session
+  // stays `in_progress`. Asserting `in_progress` unconditionally would only pass
+  // on an instance with no provider, which is not the release configuration.
+  const analysed = (reviewData.integritySummary ?? []).length > 0;
+  step(
+    'the session status reflects whether an integrity analysis ran',
+    analysed ? reviewData.status === 'flagged' : reviewData.status === 'in_progress',
+    `status=${reviewData.status} analysed=${analysed}`,
+  );
 }
 
 // ── 5. Terminate ──────────────────────────────────────────────────────────

@@ -59,7 +59,11 @@ class IntegrityMetricsPanel extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.shield_outlined, size: 64, color: theme.colorScheme.outline),
+          Icon(
+            Icons.shield_outlined,
+            size: 64,
+            color: theme.colorScheme.outline,
+          ),
           const SizedBox(height: 16),
           Text(
             'Integrity signals appear here',
@@ -119,7 +123,10 @@ class IntegrityMetricsPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Flags (${report.flags.length})', style: theme.textTheme.titleSmall),
+        Text(
+          'Flags (${report.flags.length})',
+          style: theme.textTheme.titleSmall,
+        ),
         const SizedBox(height: 8),
         ...report.flags.map((flag) => _FlagCard(flag: flag)),
       ],
@@ -160,40 +167,43 @@ class IntegrityMetricsPanel extends StatelessWidget {
                   style: theme.textTheme.labelMedium,
                 ),
                 const SizedBox(height: 6),
-                ...plagiarism.matchedSnippets.take(5).map(
-                  (match) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${(match.similarityScore * 100).toStringAsFixed(0)}% · ${match.sourceLabel}',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            match.candidateSnippet,
-                            maxLines: 4,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 11,
+                ...plagiarism.matchedSnippets
+                    .take(5)
+                    .map(
+                      (match) => Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${(match.similarityScore * 100).toStringAsFixed(0)}% · ${match.sourceLabel}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 2),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color:
+                                    theme.colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                match.candidateSnippet,
+                                maxLines: 4,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
               ],
             ],
           ),
@@ -221,7 +231,10 @@ class IntegrityMetricsPanel extends StatelessWidget {
             child: ListTile(
               dense: true,
               leading: const Icon(Icons.insights_outlined, size: 18),
-              title: Text(anomaly.anomalyType, style: theme.textTheme.labelLarge),
+              title: Text(
+                anomaly.anomalyType,
+                style: theme.textTheme.labelLarge,
+              ),
               subtitle: Text(
                 '${anomaly.description}\nObserved ${anomaly.metricValue} against a threshold of ${anomaly.threshold}',
                 style: theme.textTheme.bodySmall,

@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-import 'package:assessment_console/app.dart';
-import 'package:assessment_console/models/integrity.dart';
-import 'package:assessment_console/providers/health_provider.dart';
-import 'package:assessment_console/providers/identity_provider.dart';
-import 'package:assessment_console/providers/integrity_provider.dart';
-import 'package:assessment_console/providers/review_provider.dart';
-import 'package:assessment_console/providers/theme_provider.dart';
-import 'package:assessment_console/services/api_client.dart';
+import 'package:tryveriqo_console/app.dart';
+import 'package:tryveriqo_console/models/integrity.dart';
+import 'package:tryveriqo_console/providers/health_provider.dart';
+import 'package:tryveriqo_console/providers/identity_provider.dart';
+import 'package:tryveriqo_console/providers/integrity_provider.dart';
+import 'package:tryveriqo_console/providers/review_provider.dart';
+import 'package:tryveriqo_console/providers/theme_provider.dart';
+import 'package:tryveriqo_console/services/api_client.dart';
 
 Widget wrap(ApiService api) {
   return MultiProvider(
@@ -107,8 +107,10 @@ void main() {
       expect(report.flags.single.label, 'Large Paste');
       expect(report.flags.single.severity, 'high');
       expect(report.plagiarismReport?.overallSimilarity, 0.83);
-      expect(report.plagiarismReport?.matchedSnippets.single.sourceLabel,
-          'reference completion');
+      expect(
+        report.plagiarismReport?.matchedSnippets.single.sourceLabel,
+        'reference completion',
+      );
     });
 
     test('tolerates a missing similarity report', () {
