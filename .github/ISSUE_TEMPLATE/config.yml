@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/OWNER/REPO/security/advisories/new
+    url: https://github.com/Bilal-Lodhi/tryveriqo/security/advisories/new
     about: Report a security problem privately. Do not open a public issue.
   - name: Support and scope
-    url: https://github.com/OWNER/REPO/blob/main/SUPPORT.md
+    url: https://github.com/Bilal-Lodhi/tryveriqo/blob/main/SUPPORT.md
     about: What is supported, and which behaviours are working as designed.

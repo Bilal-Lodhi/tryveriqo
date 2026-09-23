@@ -19,9 +19,9 @@ do today?
 ## Why this belongs in this product
 
 <!--
-This is an assessment integrity platform. Explain how the proposal fits that
-domain. Proposals that would make the software assert misconduct, or that import
-an unrelated product's semantics, will be declined.
+This is tryveriqo, an assessment integrity platform. Explain how the proposal
+fits that domain. Proposals that would make the software assert misconduct, or
+that import an unrelated product's semantics, will be declined.
 -->
 
 ## Alternatives considered
