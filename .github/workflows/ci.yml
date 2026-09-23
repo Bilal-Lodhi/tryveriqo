@@ -71,15 +71,19 @@ jobs:
         working-directory: apps/console
         run: flutter test
 
+      - name: Verify formatting
+        working-directory: apps/console
+        run: dart format --output=none --set-exit-if-changed .
+
   container:
-    name: Container image builds
+    name: Container image builds and fails closed
     runs-on: ubuntu-latest
     steps:
       - name: Check out
         uses: actions/checkout@v4
 
       - name: Build image
-        run: docker build -t assessment-ci:local .
+        run: docker build -t tryveriqo-ci:local .
 
       - name: Prove the image fails closed without secrets
         run: |
@@ -89,7 +93,7 @@ jobs:
           docker run --rm \
             -e ENVIRONMENT=production \
             --entrypoint node \
-            assessment-ci:local ./apps/api/dist/index.js > /tmp/startup.log 2>&1
+            tryveriqo-ci:local ./apps/api/dist/index.js > /tmp/startup.log 2>&1
           status=$?
           set -e
           cat /tmp/startup.log
@@ -101,6 +105,25 @@ jobs:
           grep -q "ASSESSMENT_SESSION_SECRET" /tmp/startup.log
           grep -q "Refusing to start in production" /tmp/startup.log
 
+      - name: Prove the tool surface fails closed without a token
+        run: |
+          set +e
+          # Same idea for the MCP transport: in production it must refuse to
+          # expose an unauthenticated datastore surface.
+          docker run --rm \
+            -e ENVIRONMENT=production \
+            -e MONGODB_URI=mongodb://127.0.0.1:27017 \
+            --entrypoint node \
+            tryveriqo-ci:local ./packages/mcp-mongodb/dist/http-server-main.js > /tmp/mcp.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/mcp.log
+          if [ "$status" -eq 0 ]; then
+            echo "::error::the MCP transport started in production without MCP_AUTH_TOKEN"
+            exit 1
+          fi
+          grep -q "MCP_AUTH_TOKEN" /tmp/mcp.log
+
   guards:
     name: Repository guards
     runs-on: ubuntu-latest
@@ -108,7 +131,8 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
         with:
-          # Full history so the secret scan can inspect every commit.
+          # Full history so the secret scan can inspect every commit, and so a
+          # force-push cannot hide a commit from the scan.
           fetch-depth: 0
 
       - name: Set up Node
@@ -116,16 +140,77 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: No committed credential files
+      - name: No credential files or cloud project identifiers
         run: node scripts/guards/credential-guard.mjs
 
       - name: No retired identifiers in runtime code
         run: node scripts/guards/identifier-guard.mjs
 
-      - name: Secret scan (gitleaks)
-        uses: gitleaks/gitleaks-action@v2
+      - name: No tracked environment file
+        run: |
+          # A tracked .env is a leak regardless of what the credential guard's
+          # working-tree walk saw. Check what Git actually carries.
+          if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+            echo "::error::.env is tracked by Git"
+            exit 1
+          fi
+          if git ls-files | grep -E '(^|/)\.env$' ; then
+            echo "::error::an environment file is tracked by Git"
+            exit 1
+          fi
+          echo "No tracked environment file."
+
+      - name: No tracked build output
+        run: |
+          if git ls-files | grep -E '(^|/)(dist|build|\.dart_tool)/' ; then
+            echo "::error::build output is tracked by Git"
+            exit 1
+          fi
+          echo "No tracked build output."
+
+      - name: Validate the gitleaks configuration parses
+        run: |
+          # A malformed config would otherwise make the scan below vacuous.
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            detect --no-git --source=/repo/.gitleaks.toml --config=/repo/.gitleaks.toml --redact \
+            || true
+          echo "gitleaks parsed .gitleaks.toml"
+
+      - name: Secret scan
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: "false"
+        run: |
+          # Scan the commit range this event actually introduced, and fail loudly
+          # if the range resolves to nothing. A scan that silently examines zero
+          # commits is worse than no scan: it reports success.
+          set -e
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          elif [ "${{ github.event_name }}" = "push" ] && [ -n "${{ github.event.before }}" ] \
+            && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          else
+            # First push, a forced divergence, or a manual run: the before-SHA is
+            # absent or unreachable, so there is no meaningful range. Fall back to
+            # full-history detection rather than inventing one.
+            BASE=""
+            HEAD=""
+          fi
+
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "Scanning range ${BASE}..${HEAD}"
+            docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+              detect --source=/repo --config=/repo/.gitleaks.toml \
+              --log-opts="${BASE}..${HEAD}" --redact --verbose --exit-code=1
+          else
+            echo "No usable commit range (first push, force-push or manual run). Scanning full history."
+            docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+              detect --source=/repo --config=/repo/.gitleaks.toml \
+              --redact --verbose --exit-code=1
+          fi
 
       - name: Dependency audit (report only)
         run: |

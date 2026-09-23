@@ -1,0 +1,65 @@
+# gitleaks configuration.
+#
+# Extends the built-in ruleset rather than replacing it: every default secret
+# rule stays active. The only additions are allow-lists for text that this
+# repository must contain on purpose, so a real finding is never drowned out by
+# a known false positive.
+#
+#   gitleaks detect --config .gitleaks.toml --redact
+#
+# Two classes of intentional content need allowing:
+#
+#   1. Provenance text. This repository is a derivative work and its LICENSE must
+#      retain the source copyright notice verbatim. That notice names the source
+#      project, and `NOTICE` / `docs/provenance.md` explain the derivation. A
+#      keyword-based scanner reads those product names as suspicious strings.
+#
+#   2. Documentation and templates that show the *shape* of a credential. The
+#      environment template and the docs contain empty values and placeholder
+#      URIs, never real ones.
+#
+# The guard scripts are allow-listed for the same reason: they must name the
+# patterns they forbid. Everything else is scanned normally.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentional provenance references, blank credential templates and the guards that name forbidden patterns"
+
+# Files whose contents are deliberately about credentials, provenance or the
+# forbidden-identifier patterns. None of them contains a live secret: the
+# template ships blank values, and the guards contain only patterns.
+paths = [
+  '''LICENSE''',
+  '''NOTICE''',
+  '''docs/provenance\.md''',
+  '''CHANGELOG\.md''',
+  '''\.env\.example''',
+  '''docs/configuration\.md''',
+  '''docs/security/threat-model\.md''',
+  '''docs/release/verification\.md''',
+  '''scripts/guards/credential-guard\.mjs''',
+  '''scripts/guards/identifier-guard\.mjs''',
+  '''package-lock\.json''',
+]
+
+# Provenance product names that appear in the retained source copyright notice
+# and in the documents that explain the derivation. These are attributions, not
+# credentials.
+regexes = [
+  '''Cerberus AI Contributors''',
+  '''Google-Cloud-Hackathon''',
+  '''webscraping-464710''',
+]
+
+# Generated Flutter build output, if a build is ever run before a scan.
+stopwords = [
+  '''example''',
+  '''placeholder''',
+  '''redacted''',
+  '''your-token-here''',
+  '''<operator token>''',
+  '''<generated token>''',
+  '''<key>''',
+]
