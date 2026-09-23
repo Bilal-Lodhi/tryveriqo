@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document covers the Assessment Integrity Platform as it exists in this
+This document covers tryveriqo as it exists in this
 repository: the API, the MCP tool surface, the MongoDB store, and the reviewer
 console. It describes what the system protects, from whom, and — importantly —
 what it does not claim.
@@ -70,9 +70,15 @@ request, and refuses a candidate whose token does not own it. Verified by tests
 for both directions.
 
 **Residual.** Registration is unauthenticated by design: `POST
-/api/v1/identity/set` accepts any `candidateId`. An attacker can mint a token for
-any candidate id and submit *telemetry* attributed to them. This is a real,
-accepted limitation of a self-hosted v0.1.0 — see "Accepted risks" below.
+/api/v1/identity/set` accepts any `candidateId`. A caller can therefore claim any
+candidate id and submit *telemetry* attributed to it. What that does **not** grant
+is access to anyone else's data: the minted token is scoped to the id the caller
+supplied, and every candidate route compares the token's `candidateId` against the
+resource's owner, so cross-candidate reads and writes are refused with `403`. The
+concrete risk is *pre-registration hijack*: if an operator pre-assigns a candidate
+id to a real person, whoever claims that id first can submit telemetry under it and
+pollute that candidate's record. This is a real, accepted limitation of a
+self-hosted v0.1.0 — see "Accepted risks" below.
 
 ### T4 — Telemetry forgery to manufacture suspicion
 
@@ -207,8 +213,11 @@ These are deliberate, documented limitations of a self-hosted v0.1.0:
 
 1. **Open candidate registration.** Any caller can register any `candidateId` and
    receive a valid token for it. Candidate tokens scope *telemetry submission*,
-   not eligibility. A deployment with untrusted candidates must verify identity
-   at the edge before issuing a token.
+   not eligibility, so this grants no access to another candidate's data — but it
+   does allow pre-registration hijack of an id an operator intended for someone
+   else. A deployment with untrusted candidates must verify identity at the edge
+   before issuing a token, or front `POST /api/v1/identity/set` with a
+   proof-of-assessment bootstrap.
 2. **Single shared operator credential.** No per-reviewer identity, no RBAC, no
    audit log of who read what.
 3. **Console token in the bundle.** Documented in `SECURITY.md` and in the

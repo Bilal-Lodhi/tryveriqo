@@ -2,9 +2,9 @@
 
 ## Supported versions
 
-This project is a **v0.1.0 candidate** and has not been published as a release.
-Security fixes are applied to the default branch only. There are no maintained
-older versions.
+This project is a **v0.1.0 release candidate** and has not been published as a
+release. Security fixes are applied to the default branch only. There are no
+maintained older versions.
 
 ## Reporting a vulnerability
 
@@ -63,8 +63,20 @@ protected assets are:
   cheated. It records signals. Report a bug in a signal, not the fact that a
   signal is not proof.
 * **Console credential storage.** The Flutter console compiles its operator token
-  into the bundle. That is documented and is not considered a vulnerability; it
-  is a reason not to host the console publicly with a production token.
+  into the bundle, where anyone who can load the page can read it. That is
+  documented and is not considered a vulnerability; it is a reason never to use a
+  production operator token for a publicly served static build. Safe usage is a
+  local/trusted operator console, or a reverse proxy / backend-for-frontend that
+  injects the credential server-side. See
+  [docs/configuration.md](docs/configuration.md#console-operator-token).
+* **Open candidate registration.** `POST /api/v1/identity/set` accepts any
+  `candidateId` from any caller and mints a token scoped to exactly that id. This
+  is a documented v0.1.0 limitation rather than an authorisation bug: the token
+  grants access to that identity's own session data and nothing else, and
+  cross-candidate reads and writes are refused with `403`. The residual risk is
+  pre-registration hijack of an id an operator intended for someone else, which a
+  deployment with untrusted candidates must close at the edge. See
+  [docs/security/threat-model.md](docs/security/threat-model.md).
 * **Denial of service against a self-hosted instance.** In-process rate limiting
   exists to bound accidental amplification, not to withstand a determined
   attacker. Put an edge limiter in front of a public deployment.

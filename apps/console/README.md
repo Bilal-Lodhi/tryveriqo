@@ -1,7 +1,7 @@
-# Assessment console
+# tryveriqo console
 
-The reviewer console for the Assessment integrity platform. It is a Flutter
-application (web or desktop) that talks to the Assessment API.
+The reviewer console for tryveriqo. It is a Flutter application (web or desktop)
+that talks to the tryveriqo API.
 
 ## What it does
 
@@ -16,7 +16,7 @@ Both values are compile-time definitions:
 
 | Define | Default | Purpose |
 | --- | --- | --- |
-| `API_BASE_URL` | `http://localhost:8080` | Assessment API base URL |
+| `API_BASE_URL` | `http://localhost:8080` | tryveriqo API base URL |
 | `API_TOKEN` | *(empty)* | Operator credential for generation and cohort review |
 
 ```sh
@@ -29,9 +29,14 @@ Without `API_TOKEN` the console can still register a candidate and read that
 candidate's own review, but session listing and assessment generation return
 401/403.
 
-> A value passed with `--dart-define` is compiled into the bundle and is
-> readable by anyone who has the bundle. Never use a real production operator
-> token here for a publicly hosted console. See `docs/security/threat-model.md`.
+> **The operator token is compiled into the bundle.** It is not a runtime secret:
+> a release web build inlines it into `main.dart.js`, so anyone who can load the
+> page can read it. This is safe only for a local/trusted operator console. Never
+> use a real production operator token for a publicly hosted console; put the
+> console behind a reverse proxy or backend-for-frontend that injects the
+> credential server-side instead. See
+> [`docs/configuration.md`](../../docs/configuration.md#console-operator-token)
+> and [`docs/security/threat-model.md`](../../docs/security/threat-model.md).
 
 ## Development
 

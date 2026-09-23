@@ -4,6 +4,42 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.0] — release candidate
+
+The first release candidate. Not tagged and not published.
+
+### Added
+
+* Product identity: the project is named **tryveriqo**, applied across the README,
+  package and service metadata, the API's `service` health field, the console
+  title and web manifest, the container project name and the documentation. The
+  API now reports `service=tryveriqo-api`.
+* A transitive dependency and licence inventory, covering the full resolved Node
+  closure (156 packages) and the locked Flutter/Dart closure (28 packages).
+  Recorded in `NOTICE`.
+* Live provider verification against the Gemini Developer API, recorded in
+  `docs/release/verification.md`, and a live end-to-end workflow run.
+* Explicit known-limitations documentation for open candidate registration and for
+  the console operator token embedded in a web bundle.
+
+### Fixed
+
+* **Every generated suite collided on a single `suiteId`.** Asked for a unique
+  UUID, `gemini-2.5-flash` returns the same memorised placeholder on every call,
+  so the unique index on `metadata.suiteId` rejected the second suite. The API
+  reported success to the caller while the suite was lost. Placeholder ids are now
+  replaced in the parser, genuine model-supplied ids stay authoritative, a
+  problem can no longer reference an undeclared competency, and
+  `storeTestSuite` is idempotent on `metadata.suiteId`. Found by the live call;
+  covered by regression tests at both layers.
+* **Container supervision never noticed the tool transport dying.** The entrypoint
+  used `wait -n`, which under BusyBox `ash` does not return when a tracked child
+  dies after it has started blocking, so a container kept serving an API whose
+  datastore calls could not succeed. Replaced with explicit liveness polling.
+* `scripts/verify-lifecycle.mjs` asserted a session status that only holds on an
+  instance with no AI credential. It now expects `flagged` when an integrity
+  analysis ran and `in_progress` when it did not.
+
 ## [Unreleased]
 
 ### Added

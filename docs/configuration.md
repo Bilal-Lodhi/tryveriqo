@@ -37,7 +37,7 @@ invalidates candidate tokens.
 | Variable | Default | Required in production | Purpose |
 | --- | --- | --- | --- |
 | `MONGODB_URI` | `mongodb://mongo:27017` | — | Connection string. Inside Compose this is the bundled service |
-| `MONGODB_DATABASE` | `assessment` | — | Database name. Collections and indexes are created automatically |
+| `MONGODB_DATABASE` | `assessment` | — | Database name. Collections and indexes are created automatically. The bundled Compose stack overrides this to `tryveriqo` |
 
 ### MCP tool transport
 
@@ -107,7 +107,7 @@ so every call silently fell back to a different model. Do not reintroduce it.
 Raising `MAX_PASTE_EVENTS` or `ALERT_SCORE_THRESHOLD` makes the system quieter;
 lowering them makes it noisier. Neither changes whether a signal is *true*.
 
-### Console build-time values
+### Console operator token
 
 The console takes compile-time definitions rather than environment variables,
 because it is a compiled client bundle:
@@ -123,8 +123,26 @@ flutter run -d chrome \
   --dart-define=API_TOKEN="$ASSESSMENT_API_TOKEN"
 ```
 
-> A `--dart-define` value is compiled into the bundle and readable by anyone who
-> has it. Never ship a real production operator token in a public console.
+> **A `--dart-define` value is compiled into the bundle.** It is not a runtime
+> secret: `flutter build web` inlines the token into the emitted JavaScript, so
+> anyone who can load the page can read it out of the served assets. There is no
+> way to make it confidential in a static build, because the browser must present
+> it to the API.
+
+This constrains where the console may be deployed:
+
+| Deployment | Operator token in the bundle? | Acceptable |
+| --- | --- | --- |
+| Local / trusted operator machine | Yes, a development or short-lived token | Yes |
+| Hosted behind a reverse proxy or backend-for-frontend that injects `Authorization` server-side | No — build the console without `API_TOKEN` and let the proxy add it | Yes |
+| Publicly served static build with a real production operator token | Yes | **No.** Anyone who loads the page obtains full operator access: every candidate's telemetry, submissions and integrity reports, plus billable generation |
+
+The third row is the one to avoid. If the console must be reachable by reviewers
+over a network, terminate authentication at the proxy and keep
+`ASSESSMENT_API_TOKEN` on the server side. A production operator token must never
+be embedded in a publicly served static bundle. This is tracked as a known
+limitation in the [README](../README.md#known-limitations) and analysed in
+[docs/security/threat-model.md](security/threat-model.md) (T1, accepted risk 3).
 
 ## Startup behaviour
 

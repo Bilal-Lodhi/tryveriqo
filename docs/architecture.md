@@ -3,9 +3,9 @@
 ## Repository layout
 
 ```
-assessment/
+assessment/                 (repository directory name; the product is tryveriqo)
   apps/
-    api/                    Assessment API (TypeScript, Hono)
+    api/                    tryveriqo API (TypeScript, Hono)
       src/
         app.ts              application assembly: middleware order, route mounting
         index.ts            entry point; configuration validation and listener

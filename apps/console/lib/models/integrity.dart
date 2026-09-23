@@ -1,10 +1,9 @@
-/// Assessment console domain models.
+/// tryveriqo console domain models.
 ///
-/// These mirror the shapes returned by the Assessment API. Integrity data is
+/// These mirror the shapes returned by the tryveriqo API. Integrity data is
 /// advisory reviewer assistance: a report surfaces suspicious behaviour
 /// indicators for a human to verify, and never asserts that misconduct occurred.
 library;
-
 
 /// One integrity flag raised against a candidate's session.
 class IntegrityFlag {
@@ -160,7 +159,9 @@ class IntegrityReport {
       flags: (json['flags'] as List<dynamic>? ?? [])
           .map((e) => IntegrityFlag.fromJson(e as Map<String, dynamic>))
           .toList(),
-      plagiarismReport: PlagiarismReport.fromJsonOrNull(json['plagiarismReport']),
+      plagiarismReport: PlagiarismReport.fromJsonOrNull(
+        json['plagiarismReport'],
+      ),
       behavioralAnomalies: (json['behavioralAnomalies'] as List<dynamic>? ?? [])
           .map((e) => BehavioralAnomaly.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -238,7 +239,7 @@ class MicroEvent {
     'timestamp': timestamp,
     'payload': payload,
     'clientMetadata': const {
-      'userAgent': 'assessment-console',
+      'userAgent': 'tryveriqo-console',
       'ipAddress': '',
       'screenResolution': '',
       'platform': 'web',

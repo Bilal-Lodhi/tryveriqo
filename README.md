@@ -1,7 +1,4 @@
-# Assessment Integrity Platform
-
-> **Working name.** The product name in this repository is a placeholder and has
-> not been finally chosen.
+# tryveriqo
 
 **An open-source, self-hostable platform for generating online assessments and
 giving reviewers evidence-based integrity signals about how candidates completed
@@ -12,10 +9,10 @@ them.**
 > behaviour indicators* that a human reviewer interprets. No output of this
 > system should be treated as proof that a candidate cheated.
 
-> **Status: v0.1.0 candidate, not yet published.** The API, the console and the
-> datastore layer are built and tested locally. The AI provider path has not been
-> exercised against a live credential in this environment. See
-> [Release readiness](#release-readiness).
+> **Status: v0.1.0 release candidate, not yet published.** The API, the console
+> and the datastore layer are built and tested locally, and the AI provider path
+> has been exercised against a live Gemini credential. See
+> [Release readiness](#release-readiness) for exactly what was observed.
 
 ---
 
@@ -200,8 +197,21 @@ The values that matter most:
 
 * Telemetry is **candidate-personal data**. It records typing cadence, pasted and
   copied content, and window focus. Treat the database as sensitive.
-* The console's operator token is compiled into the Flutter bundle. Never use a
-  real production operator token for a publicly hosted console.
+* **The console's operator token is compiled into the Flutter web bundle.** A
+  token passed with `--dart-define=API_TOKEN` ends up in the served JavaScript,
+  where anyone who can load the page can read it. This is safe only for a
+  local/trusted operator console on a machine you control. **Never use a real
+  production operator token for a publicly hosted static console.** For a hosted
+  deployment, put the console behind a reverse proxy or backend-for-frontend that
+  injects the credential server-side, or keep the console off the public network.
+  See [docs/configuration.md](docs/configuration.md#console-operator-token) and
+  [docs/security/threat-model.md](docs/security/threat-model.md).
+* **Candidate registration is open.** `POST /api/v1/identity/set` accepts any
+  `candidateId` from any caller. This is a documented v0.1.0 limitation, not an
+  authorisation bug: the token it mints is scoped to the `candidateId` the caller
+  supplied, so it grants access to that identity's own session data only. A
+  caller cannot use it to read or write another candidate's data. See
+  [Known limitations](#known-limitations).
 * There is **no default credential**. Development mode generates ephemeral
   credentials and prints the operator token once; production refuses to start
   without secrets.
@@ -229,14 +239,39 @@ please read the integrity-claims guidance there before writing user-facing text.
 
 ## Release readiness
 
-* Backend: builds, typechecks and **122 automated tests pass**.
-* Console: `flutter analyze` clean, **6 tests pass**.
+* Backend: builds, typechecks and the automated test suite passes (exact counts in
+  [docs/release/verification.md](docs/release/verification.md)).
+* Console: `flutter analyze` clean and `flutter test` passes.
 * Container: image builds; a production start without secrets is proven to fail.
 * Guards: credential guard and retired-identifier guard pass; gitleaks runs in CI.
-* **Unverified:** a real end-to-end call to the AI provider. No API key was
-  available in the extraction environment, so the live generation path is
-  exercised only through parser fixtures and stubs. **Do not publish a release
-  until one real provider call has been made and recorded.**
+* **Verified live:** one real assessment generation against the Gemini Developer
+  API, parsed by the production parser and persisted through the MCP tool surface.
+  Provider mode, model id, latency and parser result are recorded in
+  [docs/release/verification.md](docs/release/verification.md).
+
+## Known limitations
+
+These are deliberate v0.1.0 boundaries. They are documented rather than hidden.
+
+1. **Candidate registration is unauthenticated.** Any caller may call
+   `POST /api/v1/identity/set` with a `candidateId` of their choosing and receive
+   a token scoped to exactly that id. The token cannot read or write another
+   candidate's data — cross-candidate access is refused with `403` — but a caller
+   can claim an unused identity. Deployments that need registration control
+   should front the endpoint with their own bootstrap check. See
+   [docs/security/threat-model.md](docs/security/threat-model.md).
+2. **The console operator token is embedded in the web bundle.** Safe for a
+   local/trusted operator console only; not for a publicly served static build.
+   See [Privacy and security warning](#privacy-and-security-warning).
+3. **Integrity output is advisory.** Flags and scores are signals for a human
+   reviewer. Nothing in this system proves that a candidate cheated.
+4. **Reference completions are caller-supplied.** The plagiarism report structure
+   is settled, but the corpus it compares against is not built in.
+5. **No reviewer accounts.** There is one shared operator credential; there is no
+   per-reviewer identity, role or audit trail.
+6. **Telemetry capture is client-side.** The API and console accept and display
+   telemetry, but this repository does not ship a hardened candidate capture
+   client.
 
 ## Provenance
 

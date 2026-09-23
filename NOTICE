@@ -1,5 +1,5 @@
-Assessment Integrity Platform
-Copyright 2026 Muhammad Bilal Raza Lodhi (Assessment Integrity Platform Contributors)
+tryveriqo
+Copyright 2026 Muhammad Bilal Raza Lodhi (tryveriqo Contributors)
 
 This product includes software developed as part of this project.
 
@@ -27,8 +27,13 @@ Substantial changes were made in this repository, including but not limited to:
   * revised configuration, environment handling and documentation.
 
 The extracted work is therefore a modified derivative, not a verbatim copy. The
-original copyright notice in LICENSE is retained unchanged, and this NOTICE file
-records the derivation as required by section 4(d) of the licence.
+source copyright notice
+
+  Copyright 2026 Muhammad Bilal Raza Lodhi (Cerberus AI Contributors)
+
+is retained verbatim in LICENSE as required by section 4(c), and this NOTICE file
+records the derivation as required by section 4(d). The derivative work carries
+its own additional copyright line for `tryveriqo` Contributors beside it.
 
 ================================================================================
 THIRD-PARTY COMPONENTS
@@ -52,6 +57,43 @@ licences are:
   http (Dart)                           BSD-3-Clause
   cupertino_icons (Dart)                MIT
 
+-------------------------------------------------------------------------------
+TRANSITIVE INVENTORY (v0.1.0)
+-------------------------------------------------------------------------------
+
+The complete resolved dependency closure was audited, not only the direct
+dependencies above.
+
+Node runtime closure — 156 packages, resolved from `package-lock.json`:
+
+  119  MIT
+   13  Apache-2.0
+   13  BSD-3-Clause
+    7  ISC
+    4  BSD-2-Clause
+    0  copyleft (GPL, AGPL, LGPL, MPL, EPL, CDDL, SSPL)
+    0  unknown or missing licence declaration
+
+Flutter / Dart closure — 28 packages locked in `apps/console/pubspec.lock`:
+
+   22  BSD-3-Clause (the Dart project default)
+    3  MIT (provider, nested, cupertino_icons)
+    3  Apache-2.0 (clock, material_color_utilities, fake_async)
+
+`flutter build web` additionally emits `assets/NOTICES`, the Flutter engine's
+own consolidated notice file. Within it, every component that ships in a web
+build is permissively licensed. The single reciprocal licence it names is the
+Mozilla Public License 2.0 on `fallback_root_certificates`, which is certificate
+*data* used by the Dart TLS stack; a web build does not include it, because
+browser builds delegate TLS to the host browser. It is therefore not
+redistributed by this project. The MPL text also *defines* the GNU GPL as a
+possible "Secondary License", which is a definition inside MPL-2.0 and not a
+GPL-licensed component.
+
+NOTICE-retention obligations: none outstanding. Of the Apache-2.0 packages in
+the closure, none distributes a `NOTICE` file, so section 4(d) retention does not
+arise for any of them. `LICENSE` files are retained by each distribution.
+
 No third-party component in this dependency set is copyleft in a way that would
 require this project to be relicensed.
 
@@ -59,5 +101,6 @@ require this project to be relicensed.
 TRADEMARKS
 ================================================================================
 
-No trademark rights are granted by this NOTICE. The product name used in this
-repository is a working placeholder and has not been finally chosen.
+No trademark rights are granted by this NOTICE. `tryveriqo` is the product name
+used for this repository. It is used without any claim of registered trademark
+status.
