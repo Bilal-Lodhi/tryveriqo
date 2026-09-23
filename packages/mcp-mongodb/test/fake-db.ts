@@ -66,6 +66,30 @@ export function createFakeDb(): FakeDb {
     async findOne(query: Record<string, unknown>) {
       return docs(name).find((doc) => matches(doc, query)) ?? null;
     },
+    async findOneAndReplace(
+      query: Record<string, unknown>,
+      replacement: Record<string, unknown>,
+      options: { upsert?: boolean; returnDocument?: "before" | "after" } = {},
+    ) {
+      const list = docs(name);
+      const index = list.findIndex((doc) => matches(doc, query));
+
+      if (index === -1) {
+        if (!options.upsert) return null;
+        const _id = `id-${(objectId += 1)}`;
+        const created = { ...replacement, _id };
+        list.push(created);
+        return options.returnDocument === "before" ? null : created;
+      }
+
+      const previous = list[index]!;
+      if (options.returnDocument === "before") return previous;
+      // A real replace keeps the existing _id; callers rely on it for the
+      // returned document id.
+      const next = { ...replacement, _id: previous["_id"] };
+      list[index] = next;
+      return next;
+    },
     async updateOne(query: Record<string, unknown>, update: Record<string, unknown>) {
       const doc = docs(name).find((candidate) => matches(candidate, query));
       if (!doc) return { matchedCount: 0, modifiedCount: 0 };

@@ -131,11 +131,31 @@ export class MongoStore {
   async storeTestSuite(suite: Document): Promise<string> {
     // The suite document is stored as-is: its `metadata` sub-document holds the
     // suiteId that `getTestSuite` indexes and reads on.
-    const result = await this.collection("testSuites").insertOne({
-      ...suite,
-      storedAt: new Date(),
-    });
-    return result.insertedId.toString();
+    //
+    // Storing is idempotent on that suiteId. `metadata.suiteId` carries a unique
+    // index, so a plain insert turns a re-generation or a client retry into a
+    // duplicate-key failure and silently loses the newer suite. Upserting keeps
+    // one document per suite id: a repeat replaces it, which is the correct
+    // outcome because the two documents are the same suite.
+    const suiteId = (suite["metadata"] as Document | undefined)?.["suiteId"];
+
+    if (typeof suiteId !== "string" || suiteId.length === 0) {
+      // Without a suite id there is nothing to be idempotent on; insert and let
+      // the caller receive a real document id.
+      const inserted = await this.collection("testSuites").insertOne({
+        ...suite,
+        storedAt: new Date(),
+      });
+      return inserted.insertedId.toString();
+    }
+
+    const result = await this.collection("testSuites").findOneAndReplace(
+      { "metadata.suiteId": suiteId },
+      { ...suite, storedAt: new Date() },
+      { upsert: true, returnDocument: "after" },
+    );
+
+    return result?._id?.toString() ?? suiteId;
   }
 
   async getTestSuite(suiteId: string): Promise<Document | null> {

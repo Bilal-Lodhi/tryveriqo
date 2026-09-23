@@ -225,6 +225,41 @@ describe("tool handlers against the real store", () => {
     assert.equal(fetched.data?.metadata.suiteId, "suite-round-trip");
   });
 
+  test("storing the same suite id twice replaces rather than fails", async () => {
+    // Regression: `metadata.suiteId` carries a unique index. A model that
+    // answers every "unique UUID" request with the same placeholder produced a
+    // duplicate-key failure on the second generation, which the route reports
+    // as a persistence warning — the suite was silently lost.
+    const { store, db } = await makeStore();
+
+    await store.storeTestSuite({
+      metadata: { suiteId: "suite-repeat" },
+      problems: [{ problemId: "first" }],
+    });
+    await store.storeTestSuite({
+      metadata: { suiteId: "suite-repeat" },
+      problems: [{ problemId: "second" }],
+    });
+
+    const suites = db.docs("generated_test_suites").filter(
+      (doc) => (doc["metadata"] as { suiteId?: string }).suiteId === "suite-repeat",
+    );
+    assert.equal(suites.length, 1, "a repeated suite id must not create a second document");
+
+    const stored = await store.getTestSuite("suite-repeat");
+    assert.equal(
+      (stored?.["problems"] as Array<{ problemId: string }>)[0]!.problemId,
+      "second",
+      "the most recently stored suite must win",
+    );
+  });
+
+  test("a suite without a suite id is still stored", async () => {
+    const { store } = await makeStore();
+    const documentId = await store.storeTestSuite({ metadata: {}, problems: [] });
+    assert.ok(documentId, "a suite with no id must still persist");
+  });
+
   test("judge joins across renamed collections resolve", async () => {
     const { store } = await makeStore();
     const handlers = createToolHandlers(store);
