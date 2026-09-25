@@ -367,9 +367,12 @@ results are tabulated in
 Live-stack runs were made against a self-hosted Compose deployment, not a stub, and
 the service identity was confirmed from `/health` before any workflow ran.
 
-**One thing the gate did not clear:** a config census found `config.database.uri`
-parsed and never read by the API. It changes no behaviour and is filed as issue #31
-rather than fixed here, because the gate's scope was release preparation.
+**One thing the gate found, and this release fixes:** a config census showed
+`config.database.uri` was parsed and never read by the API — the API reaches the
+datastore through the MCP tool surface, and the **MCP process** owns the MongoDB
+connection and reads `MONGODB_URI` itself. The dead field is removed, `MONGODB_URI`
+is documented as MCP-owned, and a new census test fails if any config field is ever
+parsed and read by nothing again.
 
 ## Getting started
 

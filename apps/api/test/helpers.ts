@@ -35,7 +35,9 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       temperature: 0.2,
       requestTimeoutMs: 5_000,
     },
-    database: { uri: "mongodb://127.0.0.1:27017", databaseName: "assessment_test" },
+    // No connection string: the API reaches the datastore through the MCP tool
+    // surface, and the MCP process owns the MongoDB connection.
+    database: { databaseName: "assessment_test" },
     mcp: { endpoint: "http://127.0.0.1:3001", authToken: "", timeoutMs: 1_000 },
     auth: {
       apiToken: TEST_API_TOKEN,

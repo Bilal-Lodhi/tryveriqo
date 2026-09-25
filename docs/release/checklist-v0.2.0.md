@@ -67,7 +67,6 @@ Valuable, and explicitly not blockers.
 | B5 | Load, stress and adversarial DoS testing | In-process rate limits are a backstop, not a load-tested defence |
 | B6 | Pagination UI for very long telemetry timelines | The continuation mechanism and the truncation notice ship; a full pager does not |
 | B7 | `npm audit`-driven dependency upgrades beyond security-relevant ones | Avoid churn |
-| B8 | `config.database.uri` is parsed and never read by the API | Filed as issue #31 during the release-gate config census. Not release-blocking: it changes no behaviour, and the MCP process's use of `MONGODB_URI` is correct |
 
 ## C. Accepted limitations carried into v0.2.0
 
@@ -169,7 +168,7 @@ than asserted.
 | `GET /health` reports the prepared version | pass — `service=tryveriqo-api version=0.2.0` |
 | Relative markdown links resolve (24 files) | pass |
 | Config census: documented env variables referenced | pass — 34 of 34 |
-| Config census: `loadConfig()` fields consumed | **one finding** — `config.database.uri`, filed as #31 |
+| Config census: `loadConfig()` fields consumed | **zero** unconsumed — the one finding, `config.database.uri`, was fixed |
 | `npm audit` (all deps, and production-only at `high`) | 0 vulnerabilities |
 | `v0.1.0` tag unmoved | pass — `c6eaf96f` → `62b0f5af…` |
 | No `v0.2.0` tag created | pass |

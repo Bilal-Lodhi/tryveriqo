@@ -34,10 +34,27 @@ invalidates candidate tokens.
 
 ### Datastore
 
-| Variable | Default | Required in production | Purpose |
-| --- | --- | --- | --- |
-| `MONGODB_URI` | `mongodb://mongo:27017` | — | Connection string. Inside Compose this is the bundled service |
-| `MONGODB_DATABASE` | `assessment` | — | Database name. Collections and indexes are created automatically. The bundled Compose stack overrides this to `tryveriqo` |
+| Variable | Default | Required in production | Read by | Purpose |
+| --- | --- | --- | --- | --- |
+| `MONGODB_URI` | `mongodb://mongo:27017` | — | **the MCP process** | Connection string. Inside Compose this is the bundled service |
+| `MONGODB_DATABASE` | `assessment` | — | the MCP process, and the API for display | Database name. Collections and indexes are created automatically. The bundled Compose stack overrides this to `tryveriqo` |
+
+**Which process owns the connection matters.** The API does **not** connect to
+MongoDB. It reaches the datastore through the MCP tool surface, and the **MCP
+process** opens the connection and reads `MONGODB_URI` from its own environment.
+The API reads `MONGODB_DATABASE` only so `GET /health` can report which database
+the tool surface is using.
+
+So `MONGODB_URI` must be set for the **MCP service**, not the API. In the bundled
+Compose file both services receive it because they share an environment block;
+only the MCP one uses it.
+
+This is why the API's config has no connection string. A `uri` field used to sit
+there, parsed from `MONGODB_URI` and read by nothing — a setting that looked
+configurable and was not. It was removed rather than made "used", because having
+the API open its own connection would be an architectural change, not a config
+fix. `apps/api/test/config-census.test.ts` now fails if any config field is
+parsed and never read.
 
 ### MCP tool transport
 
