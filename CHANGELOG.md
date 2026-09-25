@@ -8,6 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+* **Rate-limit keys are no longer client-supplied.** The limiter chose its bucket
+  from `X-Forwarded-For` / `X-Real-Ip`, which any direct client can set, so
+  rotating one header evaded every limit — including the one on unauthenticated
+  registration. Those headers are now consulted only when `TRUST_PROXY_HEADERS` is
+  explicitly enabled (default off, and only `true`/`1`/`yes` enable it). Telemetry
+  ingestion is now rate-limited too, keyed per candidate rather than per connection
+  so candidates behind one address do not share a budget. The bucket map is capped
+  at 10,000 entries and evicts rather than grows, where it previously swept only
+  above a threshold and only expired entries.
 * **Request bodies are bounded.** Nothing capped a request body, and
   `POST /api/v1/identity/set` is unauthenticated by design, so any caller on the
   network could make the process buffer an arbitrarily large body. Every route

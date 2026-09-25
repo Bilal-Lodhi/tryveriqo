@@ -238,14 +238,24 @@ an unbounded request body.
   (500 events) caps previously composed into roughly 30 MB of legitimate content
   for one request. Free text across a batch is now capped at 500,000 characters,
   which keeps the documented caps coherent with the body ceiling.
-* In-process rate limits on the two amplification endpoints; a 500-event batch
-  cap; field-length truncation; MCP calls are timeout-isolated so a slow
-  datastore degrades rather than holds a request open; AI calls have both a retry
-  policy and a hard timeout.
+* In-process rate limits on registration, capability issuance, generation and
+  ingestion; a 500-event batch cap; field-length truncation; MCP calls are
+  timeout-isolated so a slow datastore degrades rather than holds a request open;
+  AI calls have both a retry policy and a hard timeout.
+* **Rate-limit keys are not attacker-controlled by default.** `X-Forwarded-For`
+  and `X-Real-Ip` are ordinary request headers, so keying on them meant rotating
+  one header defeated every limit, including the one on unauthenticated
+  registration. They are consulted only when `TRUST_PROXY_HEADERS` is explicitly
+  enabled, and only the exact strings `true`/`1`/`yes` enable it. The bucket map
+  is capped at 10,000 entries and evicts rather than grows.
 
 **Residual.** Not a hardened DoS defence. A determined attacker can exhaust a
 self-hosted instance. In-process rate limiting remains a backstop rather than an
-edge control (accepted risk 6), and the rate-limit key is still client-supplied.
+edge control (accepted risk 6). A client rotating rate-limit keys can displace
+other callers' buckets once the map is full — memory stays bounded, but fairness
+does not. And `POST /api/v1/generate` has no prompt-length bound beyond its 64 KiB
+body ceiling, so an authenticated operator can still send a large prompt to a paid
+model.
 
 ### T12 — Cross-site request forgery and origin abuse
 

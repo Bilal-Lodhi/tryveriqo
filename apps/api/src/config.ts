@@ -75,6 +75,17 @@ export interface CorsConfig {
   allowedOrigins: string[];
 }
 
+export interface RateLimitConfig {
+  /**
+   * Whether `X-Forwarded-For` / `X-Real-Ip` may be trusted for rate-limit keys.
+   *
+   * Off by default. A direct client can set those headers, so trusting them
+   * without a proxy in front means any caller can rotate one header and evade
+   * every limit.
+   */
+  trustProxyHeaders: boolean;
+}
+
 export interface IntegrityConfig {
   sessionTtlSeconds: number;
   maxPasteEventsPerSession: number;
@@ -92,7 +103,20 @@ export interface AppConfig {
   mcp: McpConfig;
   auth: AuthConfig;
   cors: CorsConfig;
+  rateLimit: RateLimitConfig;
   integrity: IntegrityConfig;
+}
+
+/**
+ * Reads a boolean, defaulting to false.
+ *
+ * Only the exact strings `true` / `1` / `yes` enable the setting, so a typo
+ * leaves the safe default in place rather than silently trusting a
+ * client-supplied header.
+ */
+function readBoolean(name: string): boolean {
+  const raw = readString(name).toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes";
 }
 
 function readInt(name: string, fallback: number): number {
@@ -230,6 +254,7 @@ export function loadConfig(): AppConfig {
       registrationCapabilityTtlSeconds: readCapabilityTtlSeconds(),
     },
     cors: { allowedOrigins },
+    rateLimit: { trustProxyHeaders: readBoolean("TRUST_PROXY_HEADERS") },
     integrity: {
       sessionTtlSeconds: readInt("SESSION_TTL_SECONDS", 7200),
       maxPasteEventsPerSession: readInt("MAX_PASTE_EVENTS", 5),

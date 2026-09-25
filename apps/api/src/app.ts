@@ -148,11 +148,34 @@ export function buildApp(options: BuildAppOptions): Hono<AppEnv> {
 
   app.use(
     "/api/v1/identity/set",
-    rateLimit({ windowMs: 60_000, max: 30, name: "identity registration" }),
+    rateLimit({
+      windowMs: 60_000,
+      max: 30,
+      name: "identity registration",
+      trustProxyHeaders: config.rateLimit.trustProxyHeaders,
+    }),
   );
   app.use(
     "/api/v1/generate",
-    rateLimit({ windowMs: 60_000, max: 20, name: "assessment generation" }),
+    rateLimit({
+      windowMs: 60_000,
+      max: 20,
+      name: "assessment generation",
+      trustProxyHeaders: config.rateLimit.trustProxyHeaders,
+    }),
+  );
+  // Ingestion is the highest-volume authenticated write path and the one that can
+  // reach the paid model, so it is limited per candidate rather than per
+  // connection: candidates behind one address must not share a budget.
+  app.use(
+    "/api/v1/integrity/ingest",
+    rateLimit({
+      windowMs: 60_000,
+      max: 240,
+      name: "telemetry ingestion",
+      keyBy: "principal",
+      trustProxyHeaders: config.rateLimit.trustProxyHeaders,
+    }),
   );
 
   app.route("/api/v1/identity", identityRoutes(deps));
