@@ -267,6 +267,32 @@ export class MongoStore {
     return this.collection("microEvents").countDocuments({ sessionId, eventType });
   }
 
+  /**
+   * Exact event count per type for a session, in one aggregation.
+   *
+   * Exists so a projection rebuilt from the store can be given true totals
+   * instead of accumulating whatever page it happened to fetch — which would make
+   * `shouldAnalyze`'s thresholds less likely to trip on a long session. One
+   * `$group` rather than a count per type, because nine round trips per recovered
+   * session is a poor shape.
+   */
+  async countSessionEventsByType(sessionId: string): Promise<Record<string, number>> {
+    const grouped = await this.collection("microEvents")
+      .aggregate([
+        { $match: { sessionId } },
+        { $group: { _id: "$eventType", count: { $sum: 1 } } },
+      ])
+      .toArray();
+
+    const counts: Record<string, number> = {};
+    for (const row of grouped) {
+      const type = row["_id"];
+      const count = Number(row["count"]);
+      if (typeof type === "string" && Number.isFinite(count)) counts[type] = count;
+    }
+    return counts;
+  }
+
   // ─── Integrity reports ───────────────────────────────────────────
 
   async storeIntegrityReport(report: Document): Promise<string> {

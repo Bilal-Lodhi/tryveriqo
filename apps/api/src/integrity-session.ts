@@ -71,12 +71,19 @@ export interface SessionState {
   /** True when this projection was rebuilt from the persisted record. */
   recoveredFromStore: boolean;
   /**
-   * True when the recovery page was itself truncated, so the counters below were
-   * rebuilt from part of the stored history rather than all of it. Disclosed
-   * rather than hidden: a silently undercounted projection would make the
-   * analysis thresholds less likely to trip.
+   * True when the recovery page was itself truncated, so the retained *windows*
+   * were rebuilt from part of the stored history rather than all of it.
    */
   recoveredPartially: boolean;
+  /**
+   * True when the counters that feed analysis thresholds are exact totals.
+   *
+   * False on a projection rebuilt by replaying a truncated page with no exact
+   * counts supplied: its counters then describe the page, not the record, and
+   * thresholds can under-trigger. Recorded so that is visible rather than
+   * implied.
+   */
+  countersExact: boolean;
   /**
    * Epoch milliseconds of the most recent observation folded into this
    * projection, or 0 when it has never been observed. This is what the
@@ -142,6 +149,9 @@ export function createSessionState(seed: {
     recentEventFingerprints: new Set<string>(),
     recoveredFromStore: seed.recoveredFromStore ?? false,
     recoveredPartially: false,
+    // A fresh projection accumulates real totals as it goes, so its counters are
+    // exact by construction.
+    countersExact: true,
     lastActivityAt: seed.lastActivityAt ?? 0,
   };
 }
@@ -372,6 +382,15 @@ export function hydrateFromPersisted(input: {
    * an undercounted recovery is visible rather than implied to be exact.
    */
   recoveredPartially?: boolean;
+  /**
+   * Exact per-type event counts from the store, when the caller has them.
+   *
+   * Replaying a page can only ever reconstruct the counters of that page, so a
+   * long session comes back with undercounted signals and `shouldAnalyze` is less
+   * likely to trip. Supplying real counts makes the counters totals regardless of
+   * how much of the history was replayed.
+   */
+  eventCounts?: Record<string, number>;
 }): SessionState {
   const session = createSessionState({
     sessionId: input.session.sessionId,
@@ -383,6 +402,9 @@ export function hydrateFromPersisted(input: {
     recoveredFromStore: true,
   });
   session.recoveredPartially = input.recoveredPartially ?? false;
+  // A partial replay with no exact counts produces page-derived counters, which
+  // is precisely the case that can under-trigger a threshold.
+  session.countersExact = !(input.recoveredPartially ?? false) || input.eventCounts !== undefined;
 
   // Oldest first: the code snapshot is reconstructed in observation order.
   const ordered = [...input.events].sort(
@@ -407,12 +429,59 @@ export function hydrateFromPersisted(input: {
     session.currentCode = input.codeFromReports;
   }
 
+  // Exact counts, when supplied, replace whatever the replay accumulated. The
+  // replay is still what built the retained windows and the code snapshot, so it
+  // is not wasted work — it is simply no longer the source of truth for counters.
+  if (input.eventCounts) {
+    applyExactCounts(session, input.eventCounts);
+  }
+
   // Activity is seeded from the newest stored observation, so the staleness
   // horizon measures real candidate activity rather than the moment this
   // process happened to recover the session.
   session.lastActivityAt = newestObservationMs(ordered);
 
   return session;
+}
+
+/**
+ * Overwrites the counters with the store's exact per-type counts.
+ *
+ * Anything the replay counted is discarded, because a partial replay cannot know
+ * the true totals. Types the store did not report are left at zero rather than at
+ * the replay's value, so an incomplete count map cannot masquerade as exact.
+ */
+function applyExactCounts(session: SessionState, counts: Record<string, number>): void {
+  const count = (eventType: string): number => {
+    const value = counts[eventType];
+    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  };
+
+  session.pasteCount = count("PASTE_TRIGGER");
+  session.tabSwitchCount = count("TAB_SWITCH");
+  session.windowBlurCount = count("WINDOW_BLUR");
+  session.fullscreenExitCount = count("FULLSCREEN_EXIT");
+  session.copyAttemptCount = count("COPY_ATTEMPT");
+  session.devToolsOpenCount = count("DEVELOPER_TOOLS_OPEN");
+
+  const total = Object.values(counts).reduce(
+    (sum, value) => (Number.isFinite(value) ? sum + value : sum),
+    0,
+  );
+  session.eventsObserved = total;
+
+  // Pastes without content are counted as pastes but contribute no sample, so the
+  // sample total cannot exceed the paste count.
+  session.pasteObservations = Math.min(count("PASTE_TRIGGER"), session.recentPasteContents.length);
+
+  // Keystroke *samples* are per-delta, and the store counts KEYSTROKE events
+  // rather than events that carried a numeric delta, so this figure stays as the
+  // replay computed it. It is informational: `hasAnomalousKeystrokes` reads the
+  // bounded delta window, not this total, so a partial page does not change the
+  // heuristic's input beyond the window it already had.
+  session.keystrokeObservations = session.keystrokeDeltas.length;
+
+  session.countersExact = true;
 }
 
 /** Epoch milliseconds of the newest observation, or 0 when there is none. */

@@ -341,6 +341,207 @@ describe("recovery from a truncated page is disclosed", () => {
   });
 });
 
+describe("recovery uses exact counts when the store supplies them", () => {
+  test("a partial window with exact counts has exact counters", () => {
+    // The window is partial (only two events were fetched) but the counters come
+    // from the store's own totals, so thresholds see the real record.
+    const recovered = hydrateFromPersisted({
+      session: { sessionId: "s", candidateId: "c", assessmentId: "a" },
+      events: [event(0), event(1)],
+      recoveredPartially: true,
+      eventCounts: {
+        TAB_SWITCH: 900,
+        WINDOW_BLUR: 40,
+        DEVELOPER_TOOLS_OPEN: 3,
+        PASTE_TRIGGER: 12,
+      },
+    });
+
+    assert.equal(recovered.recoveredPartially, true, "the window is still partial");
+    assert.equal(recovered.countersExact, true, "the counters are totals");
+    assert.equal(recovered.tabSwitchCount, 900);
+    assert.equal(recovered.windowBlurCount, 40);
+    assert.equal(recovered.devToolsOpenCount, 3);
+    assert.equal(recovered.pasteCount, 12);
+    assert.equal(recovered.eventsObserved, 955);
+  });
+
+  test("a partial window without exact counts is not claimed to be exact", () => {
+    const recovered = hydrateFromPersisted({
+      session: { sessionId: "s", candidateId: "c", assessmentId: "a" },
+      events: [event(0), event(1)],
+      recoveredPartially: true,
+    });
+
+    assert.equal(recovered.recoveredPartially, true);
+    assert.equal(
+      recovered.countersExact,
+      false,
+      "page-derived counters must not be presented as totals",
+    );
+    assert.equal(recovered.tabSwitchCount, 2);
+  });
+
+  test("a full recovery is exact with or without counts", () => {
+    for (const counts of [undefined, { TAB_SWITCH: 2 }]) {
+      const recovered = hydrateFromPersisted({
+        session: { sessionId: "s", candidateId: "c", assessmentId: "a" },
+        events: [event(0), event(1)],
+        ...(counts ? { eventCounts: counts } : {}),
+      });
+      assert.equal(recovered.recoveredPartially, false);
+      assert.equal(recovered.countersExact, true);
+    }
+  });
+
+  test("a type the store did not report is zeroed, not left at the replay value", () => {
+    // An incomplete count map must not masquerade as exact.
+    const recovered = hydrateFromPersisted({
+      session: { sessionId: "s", candidateId: "c", assessmentId: "a" },
+      events: [event(0, "COPY_ATTEMPT"), event(1, "FULLSCREEN_EXIT")],
+      recoveredPartially: true,
+      eventCounts: { TAB_SWITCH: 5 },
+    });
+
+    assert.equal(recovered.copyAttemptCount, 0);
+    assert.equal(recovered.fullscreenExitCount, 0);
+    assert.equal(recovered.tabSwitchCount, 5);
+  });
+
+  test("exact counts make a long recovered session trip its thresholds", () => {
+    // The defect this closes: a session with 900 developer-tools events, one page
+    // fetched, and counters describing that page — so the threshold never tripped.
+    const pageOnly = hydrateFromPersisted({
+      session: { sessionId: "s", candidateId: "c", assessmentId: "a" },
+      events: [
+        { ...event(0, "PASTE_TRIGGER"), payload: { pasteContent: SUBSTANTIAL_CODE } },
+      ],
+      recoveredPartially: true,
+    });
+
+    const withCounts = hydrateFromPersisted({
+      session: { sessionId: "s", candidateId: "c", assessmentId: "a" },
+      events: [
+        { ...event(0, "PASTE_TRIGGER"), payload: { pasteContent: SUBSTANTIAL_CODE } },
+      ],
+      recoveredPartially: true,
+      eventCounts: { DEVELOPER_TOOLS_OPEN: 900, PASTE_TRIGGER: 1 },
+    });
+
+    assert.equal(
+      shouldAnalyze(pageOnly, THRESHOLDS),
+      false,
+      "the page alone never saw the developer-tools events",
+    );
+    assert.equal(
+      shouldAnalyze(withCounts, THRESHOLDS),
+      true,
+      "the exact counts reveal the signal the page hid",
+    );
+  });
+});
+
+describe("the ingest path recovers with exact counters", () => {
+  /** A store whose session is far longer than the page it returns. */
+  function makeApp(eventCounts: Record<string, number> | undefined) {
+    const mcp = new StubMcpClient()
+      .respond(MCP_TOOLS.GET_SESSION_REVIEW, () => ({
+        success: true,
+        session: {
+          sessionId: "session-1",
+          candidateId: "candidate-1",
+          assessmentId: "assessment-1",
+          status: "in_progress",
+        },
+        // One event out of nine hundred.
+        events: [
+          {
+            eventType: "KEYSTROKE",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            payload: { char: "a", deltaMs: 120 },
+          },
+        ],
+        integrityReports: [],
+        eventTotal: 901,
+        eventsReturned: 1,
+        eventsTruncated: true,
+        nextEventOffset: 1,
+        ...(eventCounts === undefined ? {} : { eventCounts }),
+      }))
+      .respond(MCP_TOOLS.INGEST_MICRO_EVENTS, () => ({ success: true, processedCount: 1 }));
+
+    const sessions = new SessionRegistry();
+    const app = buildApp({
+      config: testConfig(),
+      ai: new StubAiClient(),
+      mcp,
+      sessions,
+      log: () => undefined,
+      requestLogging: false,
+    });
+
+    return { app, sessions, mcp };
+  }
+
+  async function ingest(app: ReturnType<typeof buildApp>): Promise<void> {
+    await app.request("/api/v1/integrity/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${TEST_API_TOKEN}` },
+      body: JSON.stringify({
+        events: [
+          {
+            eventId: "fresh",
+            sessionId: "session-1",
+            candidateId: "candidate-1",
+            assessmentId: "assessment-1",
+            problemId: "problem-1",
+            eventType: "TAB_SWITCH",
+            timestamp: "2026-01-01T00:05:00.000Z",
+            payload: { visibilityState: "hidden" },
+          },
+        ],
+      }),
+    });
+  }
+
+  test("recovery requests exact counts from the store", async () => {
+    const { app, mcp } = makeApp({ DEVELOPER_TOOLS_OPEN: 900 });
+    await ingest(app);
+
+    const calls = mcp.callsFor(MCP_TOOLS.GET_SESSION_REVIEW);
+    assert.ok(calls.length > 0, "recovery must have asked the store");
+    assert.equal(
+      calls[0]?.["includeEventCounts"],
+      true,
+      "recovery must ask for exact counts, or its counters are page-derived",
+    );
+  });
+
+  test("the recovered projection carries the store's totals", async () => {
+    const { app, sessions } = makeApp({ DEVELOPER_TOOLS_OPEN: 900, KEYSTROKE: 1 });
+    await ingest(app);
+
+    const recovered = sessions.get("session-1");
+    assert.ok(recovered, "the session must have been recovered");
+
+    assert.equal(recovered.devToolsOpenCount, 900);
+    assert.equal(recovered.recoveredPartially, true, "the window came from a partial page");
+    assert.equal(recovered.countersExact, true, "but the counters are totals");
+    // The one fresh event is folded in on top of the exact counts.
+    assert.equal(recovered.tabSwitchCount, 1);
+  });
+
+  test("without exact counts the projection says so", async () => {
+    const { app, sessions } = makeApp(undefined);
+    await ingest(app);
+
+    const recovered = sessions.get("session-1");
+    assert.ok(recovered);
+    assert.equal(recovered.countersExact, false);
+    assert.equal(recovered.devToolsOpenCount, 0);
+  });
+});
+
 describe("the operator summary reports totals and window sizes", () => {
   function makeApp() {
     const mcp = new StubMcpClient()

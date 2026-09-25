@@ -155,12 +155,52 @@ export function createFakeDb(): FakeDb {
         } else if (stage["$group"]) {
           const group = stage["$group"] as Record<string, unknown>;
           const key = String(group["_id"]).replace("$", "");
+          // Accumulators the store actually uses. Anything else throws rather
+          // than returning a wrong number.
+          const accumulators = Object.entries(group).filter(([field]) => field !== "_id");
+          for (const [field, spec] of accumulators) {
+            const shape = spec as Record<string, unknown>;
+            const supported =
+              (shape["$sum"] === 1 && Object.keys(shape).length === 1) ||
+              (typeof shape["$first"] === "string" && Object.keys(shape).length === 1);
+            if (!supported) {
+              throw new Error(
+                `createFakeDb: unsupported $group accumulator for '${field}': ${JSON.stringify(spec)}`,
+              );
+            }
+          }
+
           const grouped = new Map<unknown, Record<string, unknown>>();
           for (const doc of results) {
-            if (!grouped.has(doc[key])) grouped.set(doc[key], { ...doc });
+            const groupKey = doc[key];
+            let bucket = grouped.get(groupKey);
+            if (!bucket) {
+              bucket = { _id: groupKey };
+              for (const [field, spec] of accumulators) {
+                const shape = spec as Record<string, unknown>;
+                if (shape["$sum"] === 1) bucket[field] = 0;
+              }
+              grouped.set(groupKey, bucket);
+            }
+            for (const [field, spec] of accumulators) {
+              const shape = spec as Record<string, unknown>;
+              if (shape["$sum"] === 1) {
+                bucket[field] = Number(bucket[field]) + 1;
+              } else if (shape["$first"] === "$$ROOT" && bucket[field] === undefined) {
+                // `$sort` runs before this stage, so the first document seen for
+                // a group is the one the pipeline ordered first.
+                bucket[field] = { ...doc };
+              }
+            }
           }
           results = [...grouped.values()];
         } else if (stage["$replaceRoot"]) {
+          const spec = stage["$replaceRoot"] as Record<string, unknown>;
+          const newRoot = spec["newRoot"];
+          if (typeof newRoot === "string" && newRoot.startsWith("$")) {
+            const field = newRoot.slice(1);
+            results = results.map((doc) => (doc[field] ?? doc) as Record<string, unknown>);
+          }
           continue;
         } else {
           throw new Error(`createFakeDb: unsupported aggregation stage ${Object.keys(stage)[0]}`);

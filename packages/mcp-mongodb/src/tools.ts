@@ -204,6 +204,11 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = Object.freeze([
           type: "number",
           description: "Events to skip from the newest end. Default 0.",
         },
+        includeEventCounts: {
+          type: "boolean",
+          description:
+            "Also return exact per-type event counts. Costs one aggregation; needed when rebuilding session state so counters are totals rather than page-derived.",
+        },
       },
       required: ["sessionId"],
     },
@@ -310,6 +315,7 @@ export function createToolHandlers(store: MongoStore): ToolHandlerTable {
         max: Number.MAX_SAFE_INTEGER,
         fallback: 0,
       });
+      const includeEventCounts = args["includeEventCounts"] === true;
 
       const [session, events, integrityReports, eventTotal] = await Promise.all([
         store.getSession(sessionId),
@@ -317,6 +323,14 @@ export function createToolHandlers(store: MongoStore): ToolHandlerTable {
         store.getIntegrityReports(sessionId),
         store.countSessionEvents(sessionId),
       ]);
+
+      // Exact per-type counts, only when asked for. The cohort list calls this
+      // tool once per session and does not need them; recovery does, because
+      // accumulating counters from a page undercounts a long session and makes
+      // the analysis thresholds less likely to trip.
+      const eventCounts = includeEventCounts
+        ? await store.countSessionEventsByType(sessionId)
+        : undefined;
 
       // The page is newest-first, so a reviewer who is shown only this page is
       // missing the OLDEST events. Reporting the true total and where the next
@@ -334,6 +348,7 @@ export function createToolHandlers(store: MongoStore): ToolHandlerTable {
         eventsReturned,
         eventsTruncated: consumed < eventTotal,
         nextEventOffset: consumed < eventTotal ? consumed : null,
+        ...(eventCounts === undefined ? {} : { eventCounts }),
       };
     },
 

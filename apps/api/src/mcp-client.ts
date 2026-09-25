@@ -182,6 +182,8 @@ export interface SessionReviewData {
   eventsTruncated?: boolean;
   /** Offset to pass as `eventOffset` to fetch the next older page, or null. */
   nextEventOffset?: number | null;
+  /** Exact per-type event counts, present only when requested. */
+  eventCounts?: Record<string, number>;
 }
 
 export interface SessionReviewOptions {
@@ -189,6 +191,12 @@ export interface SessionReviewOptions {
   eventLimit?: number;
   /** Events to skip from the newest end. */
   eventOffset?: number;
+  /**
+   * Also fetch exact per-type counts. Recovery needs them so a rebuilt
+   * projection's counters are totals rather than page-derived; the cohort list
+   * does not, and skips the extra aggregation.
+   */
+  includeEventCounts?: boolean;
 }
 
 export async function fetchSessionReview(
@@ -200,6 +208,9 @@ export async function fetchSessionReview(
     sessionId,
     ...(options.eventLimit === undefined ? {} : { eventLimit: options.eventLimit }),
     ...(options.eventOffset === undefined ? {} : { eventOffset: options.eventOffset }),
+    ...(options.includeEventCounts === undefined
+      ? {}
+      : { includeEventCounts: options.includeEventCounts }),
   });
 }
 
