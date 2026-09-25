@@ -55,8 +55,10 @@ invalidates candidate tokens.
 | Variable | Default | Required in production | Purpose |
 | --- | --- | --- | --- |
 | `ASSESSMENT_API_TOKEN` | *(empty)* | **yes** | Operator/reviewer credential. Grants generation and every reviewer surface |
-| `ASSESSMENT_SESSION_SECRET` | *(empty)* | **yes** | Signing secret for candidate tokens. Minimum 32 characters |
+| `ASSESSMENT_SESSION_SECRET` | *(empty)* | **yes** | Signing secret for candidate tokens and registration capabilities. Minimum 32 characters |
 | `CANDIDATE_SESSION_TTL_SECONDS` | `7200` | — | Candidate token lifetime |
+| `CANDIDATE_REGISTRATION_MODE` | `capability` | — | `capability` (default) or `open`. `open` is refused in production |
+| `REGISTRATION_CAPABILITY_TTL_SECONDS` | `900` | — | Registration capability lifetime, clamped to 30–86400 |
 
 Generate a secret:
 
@@ -65,7 +67,72 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
 Rotating `ASSESSMENT_SESSION_SECRET` invalidates every outstanding candidate
-token. That is the intended lever for ending all candidate sessions at once.
+token **and** every outstanding registration capability. That is the intended
+lever for ending all candidate sessions at once, or for revoking capabilities
+that were handed out but not yet used.
+
+### Candidate registration
+
+Registration is the only unauthenticated write in the API, so it is the one
+place where an unauthenticated caller could otherwise claim an identity. It
+requires an **operator-issued registration capability**.
+
+```sh
+# 1. The operator mints a capability for one candidate.
+curl -sS -X POST http://127.0.0.1:8080/api/v1/identity/capability \
+  -H "Authorization: Bearer $ASSESSMENT_API_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"candidateId":"candidate-42","assessmentId":"assessment-7"}'
+
+# 2. The candidate presents it to register. No operator credential needed here.
+curl -sS -X POST http://127.0.0.1:8080/api/v1/identity/set \
+  -H 'Content-Type: application/json' \
+  -d '{"displayName":"Ada Lovelace","candidateId":"candidate-42",
+       "assessmentId":"assessment-7","registrationCapability":"rv1...."}'
+```
+
+| Property | Value |
+| --- | --- |
+| Who may mint | The operator credential only (`POST /api/v1/identity/capability`) |
+| Bound to | One `candidateId`, and optionally one `assessmentId` |
+| Lifetime | `REGISTRATION_CAPABILITY_TTL_SECONDS`, default 15 minutes |
+| Stored | **Nothing.** It is HMAC-signed, not persisted |
+| One-time use | **No.** See below |
+| Replay after expiry | Refused |
+| Replay after consumption | Not applicable — there is no consumption step |
+| Replay after secret rotation | Refused |
+| Survives a restart | Yes, while the session secret is unchanged |
+| Logged | Never |
+
+**What it proves.** That the operator authorised this candidate id, and that the
+presenter holds the operator's grant. Nothing more. It is **not** verified human
+identity, KYC, biometrics, or proof that the presenter is the person the id
+names. The product makes no such claim anywhere.
+
+**What it prevents.** A caller who knows a candidate id from obtaining a token
+for that candidate — including an existing candidate whose submitted code and
+integrity reports are already stored. Before this existed, `candidateId` alone
+was sufficient, which meant a known candidate id granted read access to that
+candidate's record.
+
+**What it does not solve.**
+
+* It is **not one-time use**. A capability can be replayed by whoever holds it
+  until it expires. Statelessness and single-use are mutually exclusive without a
+  consumed-capability store, and making registration depend on the datastore
+  would be a reliability regression. A short TTL is what bounds the window; if
+  you need a tighter guarantee, mint per-candidate capabilities with a short
+  lifetime and rotate `ASSESSMENT_SESSION_SECRET` to revoke them all.
+* It does not stop a candidate from sharing their capability with someone else.
+* It does not rate-limit how many candidates one operator registers.
+* It does not replace identity verification at the edge, which a deployment that
+  must know *who* a candidate is still has to do itself.
+
+**`CANDIDATE_REGISTRATION_MODE=open`** restores the old behaviour — any caller,
+any `candidateId`, no capability. It exists only for local development and
+demoware. The API **refuses to start in production** with it, an unrecognised
+value falls back to `capability`, and enabling it in development logs a warning
+stating exactly what it reopens.
 
 ### CORS
 

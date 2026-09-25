@@ -105,6 +105,31 @@ jobs:
           grep -q "ASSESSMENT_SESSION_SECRET" /tmp/startup.log
           grep -q "Refusing to start in production" /tmp/startup.log
 
+      - name: Prove the image refuses open candidate registration in production
+        run: |
+          set +e
+          # Open registration lets any caller obtain a token for any candidateId,
+          # including an existing candidate's. Production must refuse it however
+          # it was configured.
+          docker run --rm \
+            -e ENVIRONMENT=production \
+            -e ASSESSMENT_API_TOKEN=an-operator-token-value \
+            -e ASSESSMENT_SESSION_SECRET=a-session-secret-that-is-long-enough-01 \
+            -e CORS_ALLOWED_ORIGINS=https://assessment.example \
+            -e GEMINI_API_KEY=irrelevant-for-this-check \
+            -e CANDIDATE_REGISTRATION_MODE=open \
+            --entrypoint node \
+            tryveriqo-ci:local ./apps/api/dist/index.js > /tmp/open-registration.log 2>&1
+          status=$?
+          set -e
+          cat /tmp/open-registration.log
+          if [ "$status" -eq 0 ]; then
+            echo "::error::the API started in production with open candidate registration"
+            exit 1
+          fi
+          grep -q "CANDIDATE_REGISTRATION_MODE=open" /tmp/open-registration.log
+          grep -q "Refusing to start in production" /tmp/open-registration.log
+
       - name: Prove the tool surface fails closed without a token
         run: |
           set +e

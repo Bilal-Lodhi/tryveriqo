@@ -200,6 +200,33 @@ The read-side residual is unchanged and still real: registration is
 unauthenticated, so a known candidate id yields a token that can read that
 candidate's own data. That is issue #2.
 
+### Correction: registration was unauthenticated
+
+The row "Candidate registration / session creation — pass, `201`, scoped token
+issued" was accurate and also incomplete. Registration accepted **any**
+`candidateId` from **any** caller, with no check that the id was unused, so the
+`201` above was reachable by anyone who knew a candidate id — including an
+existing candidate's, whose submitted code and integrity reports the resulting
+token could then read. The live workflow verified that a *legitimate* candidate
+could register; it did not test that an *illegitimate* one could not.
+
+That is now closed. `POST /api/v1/identity/set` requires an operator-issued
+registration capability bound to the candidate id being claimed (and to the
+assessment, when the operator bound one), and returns one identical `403` for
+every failure. See
+[configuration.md](../configuration.md#candidate-registration) and
+[threat-model.md](../security/threat-model.md) (T3).
+
+Re-verified against a live self-hosted stack in the default `capability` mode:
+`npm run smoke` reports 17 pass / 0 fail and `npm run verify` 18 pass / 0 fail,
+including two checks that did not exist before — "registration without a
+capability is refused" and "operator issues a registration capability". The
+"Candidate cannot ingest for another candidate" row was re-verified in the same
+run.
+
+The published v0.1.0 release body still describes the old behaviour. It is
+deliberately left untouched; see the note at the end of this file.
+
 ## Dependency and licence audit
 
 Recorded in full in [NOTICE](../../NOTICE). Summary:
@@ -227,3 +254,17 @@ Stated plainly so it is not mistaken for a pass:
   a load-tested defence.
 * **Non-web console targets.** `flutter analyze` and `flutter test` pass; only the
   web build was compiled.
+
+## The published v0.1.0 release body
+
+`docs/release/release-notes-v0.1.0.md` is the exact body of the published v0.1.0
+GitHub Release and is deliberately left **byte-identical** to it, even where
+later work proved a claim in it incomplete — the cross-candidate rows and the
+registration description above are the two known cases.
+
+Correcting a published release body is a release-authority action, not a
+documentation edit, so it is not done here. The current-state documents
+(README, `SECURITY.md`, `docs/configuration.md`, the threat model, and the
+corrections above) carry the accurate position. If the maintainer authorises an
+edit to the release body, this file must be updated in the same change so the two
+stay identical.

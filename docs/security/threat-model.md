@@ -63,8 +63,20 @@ limiter in front of a public deployment.
 candidate's review.
 
 **Mitigation.** Candidate tokens are HMAC-SHA256 signed over a payload carrying
-the `candidateId`, verified in constant time, and expire. Ingestion enforces
-three separate rules, because checking any one of them alone is not enough:
+the `candidateId`, verified in constant time, and expire.
+
+**Registration requires an operator-issued capability.** `POST
+/api/v1/identity/set` refuses to mint a token without a registration capability
+that is signed by the server, unexpired, and bound to the `candidateId` being
+claimed — and to the `assessmentId` too when the operator bound one. Possessing a
+candidate id is therefore no longer sufficient; the caller must also hold a grant
+the operator created for exactly that candidate. Every failure — missing,
+malformed, wrong signature, expired, wrong candidate, wrong assessment — returns
+one identical `403`, so the endpoint is not an oracle for which check failed or
+for whether a candidate id exists.
+
+Ingestion enforces three further rules, because checking any one of them alone is
+not enough:
 
 1. **One candidate per batch.** `validateIngestRequest` refuses a batch whose
    events name more than one `candidateId`, so a caller cannot smuggle events
@@ -82,26 +94,32 @@ three separate rules, because checking any one of them alone is not enough:
 
 Session review resolves the owning candidate from the stored session, not from
 the request, and refuses a candidate whose token does not own it. Verified by
-tests for every direction, including the mixed-batch and foreign-session cases.
+tests for every direction, including the mixed-batch, foreign-session and
+capability-mismatch cases.
 
-**Residual.** Registration is unauthenticated by design: `POST
-/api/v1/identity/set` accepts any `candidateId`, with no check that the id is
-unused. The minted token is scoped to the id the caller supplied, and every
-candidate route compares the token's `candidateId` against the resource's owner,
-so a token cannot be *widened* to reach a third party.
+**Residual.** What a capability proves is that the operator authorised this
+candidate id, and that the presenter holds the operator's grant. It is not
+verified human identity, and it does not prove the presenter is the person the id
+names. Remaining limitations, stated rather than implied:
 
-What it does mean is that **claiming an existing candidate id yields a token that
-can read that candidate's own data** — their session reviews, submitted code and
-integrity reports — and can submit telemetry attributed to them. This is stronger
-than "pre-registration hijack of an unused id": the id need not be unused, and
-the exposure is read as well as write. An attacker must still know the candidate
-id, and a *foreign* session id is refused by rule 3 above, but no eligibility
-check stands between a known candidate id and that candidate's record.
+* **A capability is not one-time use.** It is signed, not stored, so it can be
+  replayed by whoever holds it until it expires. Statelessness and single-use are
+  mutually exclusive without a consumed-capability store, and making registration
+  depend on the datastore would be a reliability regression. The window is
+  bounded by `REGISTRATION_CAPABILITY_TTL_SECONDS` (default 15 minutes), and
+  rotating `ASSESSMENT_SESSION_SECRET` revokes every outstanding capability at
+  once.
+* **A capability can be shared.** Whoever holds it can register as that
+  candidate. The product does not attempt to bind it to a person or a device.
+* **Capability issuance is not rate-limited per candidate.** The endpoint is
+  operator-only and bounded per caller, but one operator can mint many.
+* **Identity verification at the edge is still the deployment's job** if it must
+  know *who* a candidate is. The product verifies authorization to claim an id,
+  not the claimant's identity.
 
-A deployment with untrusted candidates must therefore verify identity at the
-edge before issuing a token, or front `POST /api/v1/identity/set` with a
-proof-of-assessment bootstrap. This is a real, accepted limitation of a
-self-hosted v0.1.0 — see "Accepted risks" below, and issue #2.
+`CANDIDATE_REGISTRATION_MODE=open` restores the pre-existing unauthenticated
+behaviour for local development. It is refused at startup in production, and an
+unrecognised value falls back to `capability` so a typo cannot reopen it.
 
 ### T4 — Telemetry forgery to manufacture suspicion
 
@@ -237,16 +255,15 @@ security one.
 
 These are deliberate, documented limitations of a self-hosted v0.1.0:
 
-1. **Open candidate registration.** Any caller can register any `candidateId` —
-   used or unused — and receive a valid token for it. Candidate tokens scope
-   *telemetry submission and that candidate's own data*, not eligibility. A token
-   cannot be widened to reach a third party, and a foreign session id is refused,
-   but claiming a **known** candidate id yields a token that can read that
-   candidate's session reviews, submitted code and integrity reports, and submit
-   telemetry attributed to them. A deployment with untrusted candidates must
-   verify identity at the edge before issuing a token, or front
-   `POST /api/v1/identity/set` with a proof-of-assessment bootstrap. Tracked as
-   issue #2; the registration model itself is a product decision, not a bug fix.
+1. **Registration proves authorization, not identity.** Registration requires an
+   operator-issued capability bound to the candidate id (see T3). What that
+   proves is that the operator authorised this candidate id and that the
+   presenter holds the grant — not that the presenter is the person the id names.
+   A capability is also **not one-time use**: it is signed, not stored, so a
+   holder can replay it until it expires. A deployment that must know *who* a
+   candidate is still has to verify identity at the edge, and one that needs
+   single-use grants needs a consumed-capability store this design deliberately
+   does not have.
 2. **Single shared operator credential.** No per-reviewer identity, no RBAC, no
    audit log of who read what.
 3. **Console token in the bundle.** Documented in `SECURITY.md` and in the

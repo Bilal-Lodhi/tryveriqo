@@ -73,12 +73,41 @@ const SUBMITTED_CODE = 'export function solve(xs) { return xs.slice().sort((a, b
 console.log(`Assessment lifecycle verification against ${baseUrl}\n`);
 
 // ── 1. Register ───────────────────────────────────────────────────────────
+// Registration requires an operator-issued capability bound to the candidate id,
+// so the operator mints one first. The capability is a credential: it is used
+// here and never printed.
+const capabilityResponse = await request('/api/v1/identity/capability', {
+  method: 'POST',
+  token: operatorToken,
+  body: { candidateId, assessmentId },
+});
+step(
+  'operator issues a registration capability',
+  capabilityResponse.status === 201,
+  `status ${capabilityResponse.status}`,
+);
+const registrationCapability = capabilityResponse.payload?.capability;
+
 const registration = await request('/api/v1/identity/set', {
   method: 'POST',
   token: '',
-  body: { displayName: 'Lifecycle Verification', candidateId },
+  body: { displayName: 'Lifecycle Verification', candidateId, assessmentId, registrationCapability },
 });
 step('candidate registers', registration.status === 201, `status ${registration.status}`);
+
+// The authorization boundary itself: without the capability, registration must
+// be refused. A deployment that silently allowed this would reopen the hole the
+// capability exists to close.
+const unprovenRegistration = await request('/api/v1/identity/set', {
+  method: 'POST',
+  token: '',
+  body: { displayName: 'Lifecycle Verification', candidateId, assessmentId },
+});
+step(
+  'registration without a capability is refused',
+  unprovenRegistration.status === 403,
+  `status ${unprovenRegistration.status}`,
+);
 
 const candidateToken = registration.payload?.sessionToken;
 if (typeof candidateToken !== 'string' || candidateToken.length === 0) {

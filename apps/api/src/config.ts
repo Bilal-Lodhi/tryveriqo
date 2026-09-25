@@ -7,6 +7,11 @@
  * filesystem, and no default credential of any kind.
  */
 
+import {
+  MAX_CAPABILITY_TTL_SECONDS,
+  MIN_CAPABILITY_TTL_SECONDS,
+} from "./middleware/registration-capability.js";
+
 export type Environment = "development" | "test" | "production";
 
 export const APP_VERSION = "0.1.0";
@@ -40,6 +45,18 @@ export interface McpConfig {
   timeoutMs: number;
 }
 
+/**
+ * How a candidate obtains a token.
+ *
+ * `capability` — registration requires an operator-issued registration
+ *                capability bound to the candidate id. This is the default and
+ *                the only mode production accepts.
+ * `open`       — registration accepts any `candidateId` from any caller. This
+ *                is the pre-existing behaviour, kept **only** as an explicit
+ *                development convenience, and refused outright in production.
+ */
+export type RegistrationMode = "capability" | "open";
+
 export interface AuthConfig {
   /** Operator/reviewer bearer token. */
   apiToken: string;
@@ -47,6 +64,10 @@ export interface AuthConfig {
   sessionSecret: string;
   /** Candidate session token lifetime. */
   candidateTokenTtlSeconds: number;
+  /** Whether registration requires an operator-issued capability. */
+  registrationMode: RegistrationMode;
+  /** Lifetime of a registration capability. */
+  registrationCapabilityTtlSeconds: number;
 }
 
 export interface CorsConfig {
@@ -99,6 +120,23 @@ function readEnvironment(): Environment {
   return "development";
 }
 
+/**
+ * Reads the registration mode, defaulting to the safe value.
+ *
+ * Only the exact string `open` selects the insecure path; anything unrecognised
+ * (including a typo) falls back to `capability`. A configuration mistake must
+ * never be what reopens unauthenticated registration.
+ */
+function readRegistrationMode(): RegistrationMode {
+  return readString("CANDIDATE_REGISTRATION_MODE") === "open" ? "open" : "capability";
+}
+
+/** Clamps the capability lifetime into the range the capability module accepts. */
+function readCapabilityTtlSeconds(): number {
+  const raw = readInt("REGISTRATION_CAPABILITY_TTL_SECONDS", 900);
+  return Math.min(Math.max(raw, MIN_CAPABILITY_TTL_SECONDS), MAX_CAPABILITY_TTL_SECONDS);
+}
+
 function parseCorsOrigins(raw: string): string[] {
   return raw
     .split(",")
@@ -131,6 +169,7 @@ export function loadConfig(): AppConfig {
 
   const apiToken = readString("ASSESSMENT_API_TOKEN");
   const sessionSecret = readString("ASSESSMENT_SESSION_SECRET");
+  const registrationMode = readRegistrationMode();
 
   if (environment === "production") {
     const missing: string[] = [];
@@ -144,6 +183,18 @@ export function loadConfig(): AppConfig {
     if (missing.length > 0) {
       throw new ConfigurationError(
         `Refusing to start in production with incomplete configuration. Missing: ${missing.join(", ")}`,
+      );
+    }
+
+    // Open registration is refused outright rather than warned about: it lets
+    // any caller obtain a token for any candidate id, which would silently
+    // reopen the authorization hole the capability path exists to close.
+    if (registrationMode === "open") {
+      throw new ConfigurationError(
+        "Refusing to start in production with CANDIDATE_REGISTRATION_MODE=open. " +
+          "Open registration lets any caller obtain a token for any candidateId, " +
+          "including an existing candidate's. Use CANDIDATE_REGISTRATION_MODE=capability " +
+          "(the default) and issue registration capabilities with the operator credential.",
       );
     }
   }
@@ -175,6 +226,8 @@ export function loadConfig(): AppConfig {
       apiToken,
       sessionSecret,
       candidateTokenTtlSeconds: readInt("CANDIDATE_SESSION_TTL_SECONDS", 7200),
+      registrationMode,
+      registrationCapabilityTtlSeconds: readCapabilityTtlSeconds(),
     },
     cors: { allowedOrigins },
     integrity: {

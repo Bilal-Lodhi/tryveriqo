@@ -5,10 +5,15 @@ import '../providers/identity_provider.dart';
 
 /// Candidate registration.
 ///
-/// Registers a display name and candidate id with the API, which returns a
-/// short-lived candidate-scoped session token. There is no password and no
-/// account: the console is a development and self-hosted review tool, and the
-/// candidate credential exists only to scope telemetry to one candidate.
+/// Registers a display name, candidate id and — unless the API is running in
+/// the development-only open mode — an operator-issued **registration
+/// capability** bound to that candidate id. The API returns a short-lived
+/// candidate-scoped session token. There is no password and no account: the
+/// console is a development and self-hosted review tool, and the candidate
+/// credential exists only to scope telemetry to one candidate.
+///
+/// The capability is a credential. It is held in memory for the length of the
+/// request only, never written to disk, and never logged.
 
 class SessionSetupScreen extends StatefulWidget {
   const SessionSetupScreen({super.key});
@@ -21,11 +26,15 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _candidateController = TextEditingController();
+  final _assessmentController = TextEditingController();
+  final _capabilityController = TextEditingController();
 
   @override
   void dispose() {
     _nameController.dispose();
     _candidateController.dispose();
+    _assessmentController.dispose();
+    _capabilityController.dispose();
     super.dispose();
   }
 
@@ -35,6 +44,8 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
     await context.read<IdentityProvider>().setIdentity(
       displayName: _nameController.text.trim(),
       candidateId: _candidateController.text.trim(),
+      assessmentId: _assessmentController.text.trim(),
+      registrationCapability: _capabilityController.text.trim(),
     );
   }
 
@@ -102,6 +113,32 @@ class _SessionSetupScreenState extends State<SessionSetupScreen> {
                             (value == null || value.trim().isEmpty)
                             ? 'A candidate id is required'
                             : null,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _assessmentController,
+                        decoration: const InputDecoration(
+                          labelText: 'Assessment id (optional)',
+                          helperText:
+                              'Required when the registration capability is '
+                              'bound to an assessment.',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _capabilityController,
+                        obscureText: true,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        decoration: const InputDecoration(
+                          labelText: 'Registration capability',
+                          helperText:
+                              'Issued by the assessment operator. Required '
+                              'unless the server runs in development open '
+                              'registration mode.',
+                          border: OutlineInputBorder(),
+                        ),
                       ),
                       const SizedBox(height: 24),
                       FilledButton(

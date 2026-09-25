@@ -41,6 +41,11 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       apiToken: TEST_API_TOKEN,
       sessionSecret: TEST_SESSION_SECRET,
       candidateTokenTtlSeconds: 3600,
+      // Tests default to the production mode, so the registration path under
+      // test is the one a deployment actually runs. Tests that need the
+      // development shortcut opt in explicitly.
+      registrationMode: "capability",
+      registrationCapabilityTtlSeconds: 900,
     },
     cors: { allowedOrigins: ["http://localhost:8080"] },
     integrity: {

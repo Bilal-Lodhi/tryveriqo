@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+* **Candidate registration now requires an operator-issued registration
+  capability.** `POST /api/v1/identity/set` previously accepted any `candidateId`
+  from any caller with no check that the id was unused, so anyone who knew a
+  candidate id could obtain a token for that candidate — including an existing
+  one, whose submitted code and integrity report history the token could then
+  read. Registration now refuses to mint a token without a capability: an
+  HMAC-signed, short-lived grant created only by the operator credential at
+  `POST /api/v1/identity/capability`, bound to that exact `candidateId` and (when
+  the operator binds one) that `assessmentId`. Every failure returns one
+  identical `403`, so the endpoint does not reveal which check failed or whether
+  a candidate id exists. A capability proves that the operator authorised the id
+  and that the presenter holds the grant — **not** who the presenter is — and it
+  is **not** one-time use; a short TTL bounds the replay window and rotating
+  `ASSESSMENT_SESSION_SECRET` revokes every outstanding capability at once.
+  `CANDIDATE_REGISTRATION_MODE=open` restores the old behaviour for local
+  development only, and the API now **refuses to start in production** with it.
+
 ### Fixed
 
 * **The reviewer was shown the *oldest* integrity report.** `integrity_reports`

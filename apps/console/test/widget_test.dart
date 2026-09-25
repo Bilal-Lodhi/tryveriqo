@@ -35,17 +35,44 @@ void main() {
     expect(find.text('Start session'), findsOneWidget);
   });
 
-  testWidgets('rejects an incomplete registration without calling the API', (
-    tester,
-  ) async {
+  testWidgets('asks for a registration capability, obscured', (tester) async {
     final api = ApiService(baseUrl: 'http://127.0.0.1:1');
     await tester.pumpWidget(wrap(api));
 
+    expect(find.text('Registration capability'), findsOneWidget);
+    expect(find.text('Assessment id (optional)'), findsOneWidget);
+
+    // A capability is a credential: it must not be rendered in clear text.
+    final capabilityField = tester.widget<TextField>(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('Registration capability'),
+          matching: find.byType(TextFormField),
+        ),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(capabilityField.obscureText, isTrue);
+  });
+
+  testWidgets('rejects an incomplete registration without calling the API', (
+    tester,
+  ) async {
+    // The base URL is unreachable, so a real request would surface
+    // "Could not reach the identity service." Absence of that message is what
+    // proves the API was never called.
+    final api = ApiService(baseUrl: 'http://127.0.0.1:1');
+    await tester.pumpWidget(wrap(api));
+
+    // The form is taller than the test viewport, so scroll the action into view.
+    await tester.ensureVisible(find.text('Start session'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Start session'));
     await tester.pump();
 
     expect(find.text('A display name is required'), findsOneWidget);
     expect(find.text('A candidate id is required'), findsOneWidget);
+    expect(find.text('Could not reach the identity service.'), findsNothing);
   });
 
   testWidgets('renders the reviewer console once a candidate is identified', (

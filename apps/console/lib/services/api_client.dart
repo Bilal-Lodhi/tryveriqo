@@ -83,16 +83,29 @@ class ApiService {
 
   // ── Candidate identity ─────────────────────────────────────────────────────
   /// Registers a candidate and returns a candidate-scoped session token.
+  ///
+  /// [registrationCapability] is an operator-issued grant bound to this
+  /// candidate id. Registration requires one unless the API is running in the
+  /// development-only open mode, so a candidate id on its own is not enough to
+  /// obtain a token.
   Future<IdentityResponse> setIdentity({
     required String displayName,
     required String candidateId,
     String? role,
+    String? assessmentId,
+    String? registrationCapability,
   }) async {
     final body = <String, dynamic>{
       'displayName': displayName,
       'candidateId': candidateId,
     };
     if (role != null && role.isNotEmpty) body['role'] = role;
+    if (assessmentId != null && assessmentId.isNotEmpty) {
+      body['assessmentId'] = assessmentId;
+    }
+    if (registrationCapability != null && registrationCapability.isNotEmpty) {
+      body['registrationCapability'] = registrationCapability;
+    }
 
     final response = await _client
         .post(

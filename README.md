@@ -210,17 +210,19 @@ The values that matter most:
   injects the credential server-side, or keep the console off the public network.
   See [docs/configuration.md](docs/configuration.md#console-operator-token) and
   [docs/security/threat-model.md](docs/security/threat-model.md).
-* **Candidate registration is open.** `POST /api/v1/identity/set` accepts any
-  `candidateId` from any caller, with no check that the id is unused. A token
-  cannot be widened to reach a third party: telemetry ingestion requires the
-  batch to name one candidate, to match the token, and to own the target session,
-  and review resolves the owner from the stored session. But claiming a **known**
-  candidate id does yield a token that can read that candidate's own session
-  reviews, submitted code and integrity reports. See
-  [Known limitations](#known-limitations) and issue #2.
+* **Registration proves authorization, not identity.** `POST
+  /api/v1/identity/set` refuses to mint a candidate token without an
+  operator-issued **registration capability** bound to that exact `candidateId`
+  (and `assessmentId`, when bound). Knowing a candidate id is not enough to
+  obtain a token for it, so a caller cannot reach an existing candidate's
+  submitted code or integrity reports by guessing their id. What a capability
+  proves is that the operator authorised the id and that the presenter holds the
+  grant — **not** who the presenter is, and it is **not** one-time use. See
+  [docs/configuration.md](docs/configuration.md#candidate-registration) and
+  [Known limitations](#known-limitations).
 * There is **no default credential**. Development mode generates ephemeral
   credentials and prints the operator token once; production refuses to start
-  without secrets.
+  without secrets, and refuses to start with open candidate registration.
 * CORS is an explicit allow-list and is never `*`.
 * Telemetry free-text fields are length-bounded on ingestion, and a batch is
   capped, so a hostile client cannot inflate storage without limit.
@@ -259,17 +261,15 @@ please read the integrity-claims guidance there before writing user-facing text.
 
 These are deliberate v0.1.0 boundaries. They are documented rather than hidden.
 
-1. **Candidate registration is unauthenticated.** Any caller may call
-   `POST /api/v1/identity/set` with a `candidateId` of their choosing and receive
-   a token scoped to exactly that id, with no check that the id is unused. A
-   token cannot reach a *third* party, and a batch cannot be attributed to a
-   candidate who does not own the target session, so cross-candidate writes are
-   refused with `403`. What remains is a read exposure: a token for a **known**
-   candidate id can read that candidate's own reviews, submitted code and
-   integrity reports, and submit telemetry attributed to them. Deployments with
-   untrusted candidates should front the endpoint with their own bootstrap check.
-   See [docs/security/threat-model.md](docs/security/threat-model.md) and issue
-   #2.
+1. **Registration proves authorization, not identity.** `POST
+   /api/v1/identity/set` requires an operator-issued registration capability bound
+   to the candidate id being claimed, so knowing a candidate id is not enough to
+   obtain a token for it. Three limits remain, stated plainly: a capability is
+   **not one-time use** (it is signed, not stored, so a holder can replay it until
+   it expires — a short TTL bounds the window), it can be **shared** with someone
+   else, and it does not establish **who** the presenter is. A deployment that
+   must know a candidate's real identity still verifies it at the edge. See
+   [docs/configuration.md](docs/configuration.md#candidate-registration).
 2. **The console operator token is embedded in the web bundle.** Safe for a
    local/trusted operator console only; not for a publicly served static build.
    See [Privacy and security warning](#privacy-and-security-warning).
