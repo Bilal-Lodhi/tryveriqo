@@ -67,25 +67,84 @@ class ApiService {
   /// Reviewer/console credential. Never logged.
   final String operatorToken;
 
-  /// Candidate session token, set after identity registration.
+  /// Candidate session token, set after registration.
   String? sessionToken;
 
-  ApiService({required this.baseUrl, this.operatorToken = ''})
-    : _client = http.Client();
+  /// Explicit opt-out of the embedded-token guard below.
+  ///
+  /// A `--dart-define` value is compiled into the bundle and readable by anyone
+  /// who can load the page, so an embedded operator token is a real credential
+  /// only for a console served from the same trusted machine as the API. Sending
+  /// it to a remote host over a network would publish full operator access to
+  /// every visitor, which is why that is refused unless this is set deliberately.
+  final bool allowRemoteEmbeddedToken;
+
+  ApiService({
+    required this.baseUrl,
+    this.operatorToken = '',
+    this.allowRemoteEmbeddedToken = false,
+    http.Client? client,
+  }) : _client = client ?? http.Client();
+
+  /// True when an operator token was compiled in but will not be sent.
+  ///
+  /// Derived from configuration rather than recorded as a side effect of making a
+  /// request, so the UI can explain the situation before anything is attempted.
+  bool get embeddedTokenWithheld =>
+      operatorToken.isNotEmpty && !_maySendEmbeddedToken;
+
+  /// Why the embedded token is not being sent, for the UI to state plainly.
+  String? get embeddedTokenWithheldReason => embeddedTokenWithheld
+      ? 'This console was built with an operator token compiled into its bundle, '
+            'and it is pointed at $baseUrl, which is not this machine. Sending it '
+            'would hand full operator access to anyone who loads the page, so it '
+            'is withheld. Serve the console from a proxy that injects the '
+            'Authorization header server-side, or rebuild without '
+            '--dart-define=API_TOKEN.'
+      : null;
+
+  /// True when [host] is this machine.
+  ///
+  /// A token embedded in the bundle is acceptable against loopback because the
+  /// bundle is only readable by whoever is already on the machine; it is not
+  /// acceptable over a network.
+  static bool isLoopbackHost(String host) {
+    final normalised = host
+        .toLowerCase()
+        .replaceAll('[', '')
+        .replaceAll(']', '');
+    if (normalised == 'localhost' || normalised == '::1') return true;
+    return RegExp(r'^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$').hasMatch(normalised);
+  }
+
+  /// Whether the embedded operator token may be attached to a request.
+  bool get _maySendEmbeddedToken {
+    if (operatorToken.isEmpty) return false;
+    if (allowRemoteEmbeddedToken) return true;
+    try {
+      return isLoopbackHost(Uri.parse(baseUrl).host);
+    } catch (_) {
+      // An unparseable base URL is not a host we can vouch for.
+      return false;
+    }
+  }
 
   /// Headers common to every call. The bearer token is attached only when a
   /// credential exists; an unauthenticated call is left unauthenticated so the
   /// server can answer 401 rather than the client inventing one.
   Map<String, String> _commonHeaders() {
     final headers = <String, String>{'Content-Type': 'application/json'};
-    final token = operatorToken.isNotEmpty ? operatorToken : sessionToken;
-    if (token != null && token.isNotEmpty) {
+    final token = _maySendEmbeddedToken ? operatorToken : (sessionToken ?? '');
+    if (token.isNotEmpty) {
       headers['Authorization'] = 'Bearer $token';
     }
     return headers;
   }
 
   bool get hasOperatorToken => operatorToken.isNotEmpty;
+
+  /// True when an operator credential is actually usable for requests.
+  bool get hasUsableOperatorToken => _maySendEmbeddedToken;
 
   // ── Health ─────────────────────────────────────────────────────────────────
   Future<HealthStatus> fetchHealth() async {

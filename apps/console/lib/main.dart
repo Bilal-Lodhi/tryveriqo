@@ -3,10 +3,16 @@
 /// Build-time configuration:
 ///   `--dart-define=API_BASE_URL=http://localhost:8080`
 ///   `--dart-define=API_TOKEN=<operator token>` (optional; required for
-///   generation and cohort review)
+///   generation and cohort review **against loopback**)
+///   `--dart-define=ALLOW_REMOTE_EMBEDDED_TOKEN=true` (see below)
 ///
 /// The operator token is compiled into the bundle, so it must never be a real
-/// production secret for a publicly hosted console. See docs/security.
+/// production secret for a publicly hosted console. The console enforces that
+/// rather than only documenting it: an embedded token is **withheld** unless the
+/// API base URL is loopback, or `ALLOW_REMOTE_EMBEDDED_TOKEN` is set
+/// deliberately. For a hosted console, build without `API_TOKEN` and put a proxy
+/// in front that injects `Authorization` server-side — see
+/// `deploy/console-proxy/`.
 library;
 
 import 'package:flutter/material.dart';
@@ -28,8 +34,14 @@ void main() {
     defaultValue: 'http://localhost:8080',
   );
   const operatorToken = String.fromEnvironment('API_TOKEN');
+  const allowRemoteEmbeddedToken =
+      String.fromEnvironment('ALLOW_REMOTE_EMBEDDED_TOKEN') == 'true';
 
-  final api = ApiService(baseUrl: apiBaseUrl, operatorToken: operatorToken);
+  final api = ApiService(
+    baseUrl: apiBaseUrl,
+    operatorToken: operatorToken,
+    allowRemoteEmbeddedToken: allowRemoteEmbeddedToken,
+  );
 
   runApp(
     MultiProvider(

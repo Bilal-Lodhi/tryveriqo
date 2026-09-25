@@ -293,7 +293,12 @@ These are deliberate, documented limitations of a self-hosted v0.1.0:
 2. **Single shared operator credential.** No per-reviewer identity, no RBAC, no
    audit log of who read what.
 3. **Console token in the bundle.** Documented in `SECURITY.md` and in the
-   console README; it is a reason not to host the console publicly.
+   console README; it is a reason not to host the console publicly. The console
+   withholds an embedded token unless `API_BASE_URL` is loopback, or
+   `ALLOW_REMOTE_EMBEDDED_TOKEN=true` is set deliberately, which bounds the
+   accident rather than the class: an embedded token still cannot be made
+   confidential, and the reference proxy in `deploy/console-proxy/` fixes where
+   the credential lives, not who may use it.
 4. **Advisory-only integrity signals.** No output is proof of misconduct, and the
    product says so in its own UI.
 5. **Single tenancy.** There is no tenancy model, so there is nothing to bypass,

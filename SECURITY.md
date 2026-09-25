@@ -87,8 +87,14 @@ protected assets are:
   into the bundle, where anyone who can load the page can read it. That is
   documented and is not considered a vulnerability; it is a reason never to use a
   production operator token for a publicly served static build. Safe usage is a
-  local/trusted operator console, or a reverse proxy / backend-for-frontend that
-  injects the credential server-side. See
+  local/trusted operator console, or a reverse proxy that injects the credential
+  server-side. The console **enforces** this rather than only documenting it: an
+  embedded token is withheld unless `API_BASE_URL` is loopback, or
+  `ALLOW_REMOTE_EMBEDDED_TOKEN=true` is set deliberately. That guard prevents an
+  accidental public deployment from becoming an operator-access leak; it cannot
+  make an embedded token confidential. A reference proxy deployment is in
+  [`deploy/console-proxy/`](deploy/console-proxy/README.md) — note that it fixes
+  *where the credential lives*, not *who may use it*. See
   [docs/configuration.md](docs/configuration.md#console-operator-token).
 * **Candidate identity verification.** Registration proves that the operator
   authorised a candidate id and that the presenter holds that grant. It does not

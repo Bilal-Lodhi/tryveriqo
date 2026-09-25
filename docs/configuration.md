@@ -366,11 +366,17 @@ because it is a compiled client bundle:
 | --- | --- | --- |
 | `API_BASE_URL` | `http://localhost:8080` | API base URL |
 | `API_TOKEN` | *(empty)* | Operator credential |
+| `ALLOW_REMOTE_EMBEDDED_TOKEN` | `false` | Permit an embedded token against a non-loopback API |
 
 ```sh
+# Local, trusted machine: an embedded token is fine here.
 flutter run -d chrome \
   --dart-define=API_BASE_URL=http://localhost:8080 \
   --dart-define=API_TOKEN="$ASSESSMENT_API_TOKEN"
+
+# Hosted console: build WITHOUT a token and let a proxy add it server-side.
+flutter build web --release \
+  --dart-define=API_BASE_URL=https://review.example.org
 ```
 
 > **A `--dart-define` value is compiled into the bundle.** It is not a runtime
@@ -379,20 +385,39 @@ flutter run -d chrome \
 > way to make it confidential in a static build, because the browser must present
 > it to the API.
 
-This constrains where the console may be deployed:
+#### The console enforces this, not just documents it
+
+An embedded operator token is **withheld** unless `API_BASE_URL` is loopback
+(`localhost`, `127.x.x.x`, `::1`), or `ALLOW_REMOTE_EMBEDDED_TOKEN=true` is set
+deliberately. Against a non-loopback origin the console sends **no**
+`Authorization` header and states why, rather than handing full operator access to
+every visitor. A candidate session token is unaffected — it is scoped to one
+candidate, and withholding the operator token does not suppress it.
+
+This is a guard, not a secret store: it prevents an accidental public deployment
+from becoming an operator-access leak, and it cannot make an embedded token
+confidential.
 
 | Deployment | Operator token in the bundle? | Acceptable |
 | --- | --- | --- |
 | Local / trusted operator machine | Yes, a development or short-lived token | Yes |
-| Hosted behind a reverse proxy or backend-for-frontend that injects `Authorization` server-side | No — build the console without `API_TOKEN` and let the proxy add it | Yes |
-| Publicly served static build with a real production operator token | Yes | **No.** Anyone who loads the page obtains full operator access: every candidate's telemetry, submissions and integrity reports, plus billable generation |
+| Hosted behind a reverse proxy that injects `Authorization` server-side | No — build without `API_TOKEN` and let the proxy add it | Yes |
+| Publicly served static build with a real production operator token | Yes | **No**, and now refused by the console itself |
 
-The third row is the one to avoid. If the console must be reachable by reviewers
-over a network, terminate authentication at the proxy and keep
-`ASSESSMENT_API_TOKEN` on the server side. A production operator token must never
-be embedded in a publicly served static bundle. This is tracked as a known
-limitation in the [README](../README.md#known-limitations) and analysed in
-[docs/security/threat-model.md](security/threat-model.md) (T1, accepted risk 3).
+#### Reference proxy deployment
+
+[`deploy/console-proxy/`](../deploy/console-proxy/README.md) ships a working
+reverse proxy: an nginx `default.conf.template` that serves the static build and
+**overwrites** `Authorization` on the proxied paths, plus a `Dockerfile` that
+refuses to start without `ASSESSMENT_API_TOKEN` and `API_UPSTREAM`. The credential
+lives in the proxy's environment and never reaches a browser.
+
+Read that README's "what this does and does not give you" before relying on it:
+it fixes **where the credential lives**, not **who may use it**. Anyone who can
+reach the proxy still has full operator access; put authentication in front of it
+(VPN, SSO, allow-list) if it is reachable beyond people you trust. Per-reviewer
+credentials and an access log remain out of scope — see
+[docs/security/threat-model.md](security/threat-model.md) (accepted risk 2).
 
 ## Startup behaviour
 

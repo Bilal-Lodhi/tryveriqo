@@ -31,10 +31,18 @@ candidate's own review, but session listing and assessment generation return
 
 > **The operator token is compiled into the bundle.** It is not a runtime secret:
 > a release web build inlines it into `main.dart.js`, so anyone who can load the
-> page can read it. This is safe only for a local/trusted operator console. Never
-> use a real production operator token for a publicly hosted console; put the
-> console behind a reverse proxy or backend-for-frontend that injects the
-> credential server-side instead. See
+> page can read it. This is safe only for a local/trusted operator console.
+>
+> The console **enforces** that: an embedded token is withheld unless
+> `API_BASE_URL` is loopback (`localhost`, `127.x.x.x`, `::1`), or
+> `ALLOW_REMOTE_EMBEDDED_TOKEN=true` is set deliberately. Against a remote origin
+> it sends no `Authorization` header and explains why, rather than handing full
+> operator access to every visitor. That guard prevents an accident; it cannot
+> make an embedded token confidential.
+>
+> For a hosted console, build **without** `API_TOKEN` and use the reference proxy
+> in [`deploy/console-proxy/`](../../deploy/console-proxy/README.md), which
+> injects the credential server-side. See
 > [`docs/configuration.md`](../../docs/configuration.md#console-operator-token)
 > and [`docs/security/threat-model.md`](../../docs/security/threat-model.md).
 
