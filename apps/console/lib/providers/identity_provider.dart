@@ -32,6 +32,8 @@ class IdentityProvider extends ChangeNotifier {
     required String displayName,
     required String candidateId,
     String? role,
+    String? assessmentId,
+    String? registrationCapability,
   }) async {
     _isLoading = true;
     _error = null;
@@ -42,6 +44,8 @@ class IdentityProvider extends ChangeNotifier {
         displayName: displayName,
         candidateId: candidateId,
         role: role,
+        assessmentId: assessmentId,
+        registrationCapability: registrationCapability,
       );
 
       _sessionToken = response.sessionToken;

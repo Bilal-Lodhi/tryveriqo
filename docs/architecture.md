@@ -89,12 +89,45 @@ Two credential kinds, and only two.
 
 | Credential | Issued by | Grants |
 | --- | --- | --- |
-| Operator token | `ASSESSMENT_API_TOKEN`, an operator-managed secret | assessment generation; session list; any session review; candidate reports; termination |
+| Operator token | `ASSESSMENT_API_TOKEN`, an operator-managed secret | assessment generation; session list; any session review; candidate reports; termination; minting registration capabilities |
 | Candidate token | `POST /api/v1/identity/set` | that candidate's own telemetry ingestion and review |
 
 Candidate tokens are `v1.<base64url payload>.<base64url HMAC-SHA256>`. They are
 stateless, so any API process can validate a token another process issued, and
 they survive a restart. They carry the `candidateId` and an expiry.
+
+### Registration capability
+
+A third token format exists but is **not** a credential kind: a registration
+capability authorizes one candidate to claim one identity, and is consumed by
+`POST /api/v1/identity/set` rather than presented as a bearer token.
+
+```
+rv1.<base64url payload>.<base64url HMAC-SHA256>
+payload: { kind: "registration", candidateId, assessmentId | null,
+           issuedAt, expiresAt, capabilityId }
+```
+
+`apps/api/src/middleware/registration-capability.ts` is the whole of it.
+`issueRegistrationCapability` is called only by the operator-only
+`POST /api/v1/identity/capability`; `verifyRegistrationCapability` is called only
+by registration. The signing key is **derived** from `ASSESSMENT_SESSION_SECRET`
+under the label `tryveriqo:registration-capability:v1`, which gives domain
+separation — a capability signature is not a valid candidate-token signature and
+vice versa — without adding a required production secret.
+
+Design consequences worth stating:
+
+* **Stateless**, so registration never touches the datastore and a restart with
+  an unchanged secret cannot invalidate an outstanding capability.
+* **Not one-time use.** Statelessness and single-use are mutually exclusive
+  without a consumed-capability store. A short TTL bounds the window instead, and
+  rotating the session secret revokes every outstanding capability at once.
+* **One response for every failure.** Missing, malformed, bad signature, expired,
+  wrong candidate and wrong assessment all return the same `403`, so registration
+  is not an oracle for which check failed or for whether a candidate id exists.
+* **Bound before verification.** A capability longer than
+  `MAX_CAPABILITY_LENGTH` is rejected before any signature work.
 
 `authenticate()` resolves the caller without rejecting: it sets `anonymous`,
 `candidate` or `operator` on the request context. Each route then declares the

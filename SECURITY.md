@@ -58,11 +58,17 @@ protected assets are:
   refuses a session owned by anyone else — so a candidate cannot write into
   another candidate's record. A candidate cannot enumerate the cohort or review a
   foreign session.
-* **Constant-time comparison** is used for the operator token and for token
-  signatures.
+* **Registration requires operator authorization.** `POST /api/v1/identity/set`
+  refuses to mint a candidate token without a registration capability: an
+  HMAC-signed, short-lived grant the operator created for that exact
+  `candidateId` (and `assessmentId`, when bound). Knowing a candidate id is not
+  enough to obtain a token for it. Every capability failure returns one identical
+  `403`, so the endpoint does not reveal whether a candidate id exists.
+* **Constant-time comparison** is used for the operator token and for token and
+  capability signatures.
 * **No wildcard production CORS.** Origins are an explicit allow-list.
 * **No credentials in logs.** Only credential *presence* is logged, never a
-  value.
+  value — including registration capabilities.
 * **Telemetry is bounded.** Field lengths and batch size are capped on
   ingestion.
 * **The MCP tool surface is separately protected** by `MCP_AUTH_TOKEN`, and in
@@ -80,16 +86,14 @@ protected assets are:
   local/trusted operator console, or a reverse proxy / backend-for-frontend that
   injects the credential server-side. See
   [docs/configuration.md](docs/configuration.md#console-operator-token).
-* **Open candidate registration.** `POST /api/v1/identity/set` accepts any
-  `candidateId` from any caller and mints a token scoped to exactly that id, with
-  no check that the id is unused. A token cannot be widened to reach a third
-  party, and cross-candidate writes are refused with `403`. The residual is a
-  **read** exposure: a token for a known candidate id grants access to that
-  candidate's own session reviews, submitted code and integrity reports, and can
-  submit telemetry attributed to them. That is stronger than hijacking an unused
-  id, and a deployment with untrusted candidates must close it at the edge before
-  issuing a token. See
-  [docs/security/threat-model.md](docs/security/threat-model.md) and issue #2.
+* **Candidate identity verification.** Registration proves that the operator
+  authorised a candidate id and that the presenter holds that grant. It does not
+  verify *who* the presenter is. A registration capability is also **not
+  one-time use** — it is signed, not stored, so a holder can replay it until it
+  expires — and it can be shared. A deployment that must know a candidate's real
+  identity has to verify it at the edge. See
+  [docs/configuration.md](docs/configuration.md#candidate-registration) and
+  [docs/security/threat-model.md](docs/security/threat-model.md) (T3).
 * **Denial of service against a self-hosted instance.** In-process rate limiting
   exists to bound accidental amplification, not to withstand a determined
   attacker. Put an edge limiter in front of a public deployment.

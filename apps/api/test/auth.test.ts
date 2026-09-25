@@ -407,9 +407,22 @@ describe("candidate session tokens", () => {
 
   test("registration mints a usable token", async () => {
     const { app } = makeApp();
+
+    // Registration requires an operator-issued capability; the authorization
+    // cases for that are covered in registration.test.ts.
+    const capabilityResponse = await postJson(
+      app,
+      "/api/v1/identity/capability",
+      { candidateId: "candidate-42" },
+      TEST_API_TOKEN,
+    );
+    assert.equal(capabilityResponse.status, 201);
+    const { capability } = (await capabilityResponse.json()) as { capability: string };
+
     const registered = await postJson(app, "/api/v1/identity/set", {
       displayName: "Ada Lovelace",
       candidateId: "candidate-42",
+      registrationCapability: capability,
     });
     assert.equal(registered.status, 201);
 

@@ -80,18 +80,52 @@ for (const [label, path, init] of [
 
 // ── 3. Candidate registration ──────────────────────────────────────────────
 const candidateId = `smoke-candidate-${Date.now()}`;
-const registration = await request('/api/v1/identity/set', {
-  method: 'POST',
-  body: { displayName: 'Smoke Candidate', candidateId },
-});
 
-if (registration.status === 503) {
-  console.log('\n  SKIP  candidate registration is disabled (no session secret configured)');
+if (!operatorToken) {
+  // Minting a capability needs the operator credential, so without one there is
+  // no way to register. Say so rather than reporting a misleading failure.
+  console.log(
+    '\n  SKIP  candidate registration (set ASSESSMENT_API_TOKEN to mint a registration capability)',
+  );
 } else {
-  check('candidate registration succeeds', registration.status === 201, `status ${registration.status}`);
-  const sessionToken = registration.payload?.sessionToken;
+  // Registration requires an operator-issued capability bound to the candidate
+  // id. The capability is a credential: it is used here and never printed.
+  const capabilityResponse = await request('/api/v1/identity/capability', {
+    method: 'POST',
+    token: operatorToken,
+    body: { candidateId },
+  });
+  check(
+    'operator issues a registration capability',
+    capabilityResponse.status === 201,
+    `status ${capabilityResponse.status}`,
+  );
+  const registrationCapability = capabilityResponse.payload?.capability;
 
-  if (typeof sessionToken === 'string' && sessionToken.length > 0) {
+  // The authorization boundary itself. A deployment that accepted this would
+  // have reopened the hole the capability exists to close.
+  const unproven = await request('/api/v1/identity/set', {
+    method: 'POST',
+    body: { displayName: 'Smoke Candidate', candidateId },
+  });
+  check(
+    'registration without a capability is refused',
+    unproven.status === 403,
+    `status ${unproven.status}`,
+  );
+
+  const registration = await request('/api/v1/identity/set', {
+    method: 'POST',
+    body: { displayName: 'Smoke Candidate', candidateId, registrationCapability },
+  });
+
+  if (registration.status === 503) {
+    console.log('\n  SKIP  candidate registration is disabled (no session secret configured)');
+  } else {
+    check('candidate registration succeeds', registration.status === 201, `status ${registration.status}`);
+    const sessionToken = registration.payload?.sessionToken;
+
+    if (typeof sessionToken === 'string' && sessionToken.length > 0) {
     const me = await request('/api/v1/identity/me', { token: sessionToken });
     check('candidate token resolves its own identity', me.status === 200 && me.payload?.identity?.candidateId === candidateId);
 
@@ -128,8 +162,9 @@ if (registration.status === 503) {
 
     const forbidden = await request('/api/v1/sessions', { token: sessionToken });
     check('candidate cannot read the cohort session list', forbidden.status === 403, `status ${forbidden.status}`);
-  } else {
-    check('registration returned a session token', false, 'no token in the response');
+    } else {
+      check('registration returned a session token', false, 'no token in the response');
+    }
   }
 }
 

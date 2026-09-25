@@ -57,6 +57,15 @@ export function startServer(overrides?: { port?: number; quiet?: boolean }): Sta
     if (config.cors.allowedOrigins.length === 0) {
       log("[security] Development mode: no CORS origins configured; cross-origin browser calls are refused.");
     }
+    if (config.auth.registrationMode === "open") {
+      // loadConfig() refuses this in production, so reaching here means a
+      // deliberate non-production choice. Say exactly what it reopens.
+      log(
+        "[security] Development mode: CANDIDATE_REGISTRATION_MODE=open, so POST /api/v1/identity/set " +
+          "accepts any candidateId without a registration capability. Any caller can obtain a token " +
+          "for any candidate id, including an existing candidate's. This mode is refused in production.",
+      );
+    }
   }
 
   const port = overrides?.port ?? config.port;

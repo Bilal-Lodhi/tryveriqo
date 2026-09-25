@@ -122,6 +122,60 @@ describe("production fails closed", () => {
       assert.match(result.output, new RegExp(name), `the report should name ${name}`);
     }
   });
+
+  test("refuses to start with open candidate registration", () => {
+    // Open registration lets any caller obtain a token for any candidate id,
+    // including an existing candidate's. It must never be reachable in
+    // production, however it was configured.
+    const result = runEntryPoint({
+      ENVIRONMENT: "production",
+      ASSESSMENT_API_TOKEN: "an-operator-token-value",
+      ASSESSMENT_SESSION_SECRET: "a-session-secret-that-is-long-enough-01",
+      CORS_ALLOWED_ORIGINS: "https://assessment.example",
+      GEMINI_API_KEY: "irrelevant-for-this-check",
+      CANDIDATE_REGISTRATION_MODE: "open",
+    });
+
+    assert.notEqual(result.status, 0, "the process must exit non-zero");
+    assert.match(result.output, /CANDIDATE_REGISTRATION_MODE=open/);
+    assert.match(result.output, /Refusing to start in production/);
+  });
+
+  test("accepts capability registration mode in production", () => {
+    const result = runEntryPoint({
+      ENVIRONMENT: "production",
+      ASSESSMENT_API_TOKEN: "an-operator-token-value",
+      ASSESSMENT_SESSION_SECRET: "a-session-secret-that-is-long-enough-01",
+      CORS_ALLOWED_ORIGINS: "https://assessment.example",
+      GEMINI_API_KEY: "irrelevant-for-this-check",
+      CANDIDATE_REGISTRATION_MODE: "capability",
+      PORT: "0",
+      ASSESSMENT_SHUTDOWN_AFTER_MS: "500",
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `capability mode must be accepted in production: ${result.output}`,
+    );
+    assert.doesNotMatch(result.output, /Refusing to start in production/);
+  });
+
+  test("an unrecognised registration mode falls back to capability", () => {
+    // A typo must not be what reopens unauthenticated registration.
+    const result = runEntryPoint({
+      ENVIRONMENT: "production",
+      ASSESSMENT_API_TOKEN: "an-operator-token-value",
+      ASSESSMENT_SESSION_SECRET: "a-session-secret-that-is-long-enough-01",
+      CORS_ALLOWED_ORIGINS: "https://assessment.example",
+      GEMINI_API_KEY: "irrelevant-for-this-check",
+      CANDIDATE_REGISTRATION_MODE: "opne",
+      PORT: "0",
+      ASSESSMENT_SHUTDOWN_AFTER_MS: "500",
+    });
+
+    assert.equal(result.status, 0, `a typo must not fail or open registration: ${result.output}`);
+  });
 });
 
 describe("development is explicit but not silent", () => {
@@ -140,5 +194,32 @@ describe("development is explicit but not silent", () => {
     assert.match(result.output, /Development operator token/);
     assert.match(result.output, /ASSESSMENT_SESSION_SECRET was not set/);
     assert.equal(result.status, 0, `the development server should start and exit cleanly: ${result.output}`);
+  });
+
+  test("announces open registration loudly when it is deliberately enabled", () => {
+    const result = runEntryPoint({
+      ENVIRONMENT: "development",
+      PORT: "0",
+      ASSESSMENT_SHUTDOWN_AFTER_MS: "500",
+      ASSESSMENT_API_TOKEN: "",
+      ASSESSMENT_SESSION_SECRET: "",
+      CANDIDATE_REGISTRATION_MODE: "open",
+    });
+
+    assert.equal(result.status, 0, `development with open registration should start: ${result.output}`);
+    assert.match(result.output, /CANDIDATE_REGISTRATION_MODE=open/);
+    assert.match(result.output, /refused in production/);
+  });
+
+  test("says nothing about open registration when it is not enabled", () => {
+    const result = runEntryPoint({
+      ENVIRONMENT: "development",
+      PORT: "0",
+      ASSESSMENT_SHUTDOWN_AFTER_MS: "500",
+      ASSESSMENT_API_TOKEN: "",
+      ASSESSMENT_SESSION_SECRET: "",
+    });
+
+    assert.doesNotMatch(result.output, /CANDIDATE_REGISTRATION_MODE=open/);
   });
 });
