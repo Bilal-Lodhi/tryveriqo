@@ -165,6 +165,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Credential guard self-test
+        run: |
+          # Proves the guard's verdict is reproducible: an untracked local file
+          # must not change the default verdict, while a tracked one must fail it.
+          # A guard whose local and CI verdicts differ is one contributors learn
+          # to ignore.
+          node scripts/guards/credential-guard.mjs --self-test
+
       - name: No credential files or cloud project identifiers
         run: node scripts/guards/credential-guard.mjs
 

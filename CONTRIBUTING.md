@@ -36,6 +36,35 @@ node scripts/guards/credential-guard.mjs
 node scripts/guards/identifier-guard.mjs
 ```
 
+### About the repository guards
+
+`credential-guard.mjs` inspects **tracked files** by default, which is what makes
+its verdict reproducible: CI checks out exactly the tracked tree, so a local run
+and a CI run over the same commit must agree. A file you have not committed cannot
+fail it.
+
+```sh
+# The default: the tracked tree. This is what CI runs.
+node scripts/guards/credential-guard.mjs
+
+# Tracked plus committable files — what `git commit -a` would publish.
+# A local pre-commit aid: CI cannot reproduce a finding in a file that is not in
+# the repository, and the output says so.
+node scripts/guards/credential-guard.mjs --include-untracked
+
+# Deterministic scenarios proving the two verdicts agree for the same content.
+node scripts/guards/credential-guard.mjs --self-test
+```
+
+Ignored files — `.env`, `application_default_credentials.json` — are outside both
+sets, because an ignored file cannot be published. `.gitignore` covers them, and
+CI separately asserts that no environment file is tracked.
+
+If you have a local file that legitimately mentions a retired identifier — a
+scratch note, an editor session file — the default run will not fail on it. Do not
+add it to `.gitignore` just to silence the widened check; either keep it out of
+the committable set or move the content out of the repository.
+
 ## The rules that matter here
 
 ### 1. Never call a paid AI provider from a test
