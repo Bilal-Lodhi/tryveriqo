@@ -20,7 +20,9 @@ import {
   hasAnomalousKeystrokes,
   hydrateFromPersisted,
   isDuplicateEvent,
+  isStale,
   shouldAnalyze,
+  type SessionState,
 } from "../src/integrity-session.js";
 import type { MicroEvent, MicroEventType } from "../src/types.js";
 
@@ -361,5 +363,200 @@ describe("session registry", () => {
     assert.equal(registry.delete("session-1"), true);
     assert.equal(registry.delete("session-1"), false);
     assert.equal(registry.size, 0);
+  });
+});
+
+describe("session staleness horizon", () => {
+  const HORIZON_SECONDS = 3600;
+  const HORIZON_MS = HORIZON_SECONDS * 1000;
+  const AT = Date.UTC(2026, 0, 1, 12, 0, 0);
+
+  /** A projection observed once at `observedAt`. */
+  function observedAt(observedAt: number): SessionState {
+    const session = createSessionState({
+      sessionId: "session-1",
+      candidateId: "candidate-1",
+      assessmentId: "assessment-1",
+    });
+    applyEvent(session, event("KEYSTROKE", { deltaMs: 100, char: "a" }), observedAt);
+    return session;
+  }
+
+  test("an applied observation records the activity time", () => {
+    const session = observedAt(AT);
+    assert.equal(session.lastActivityAt, AT);
+  });
+
+  test("a suppressed duplicate does not refresh the activity time", () => {
+    const session = observedAt(AT);
+    const paste = event("PASTE_TRIGGER", { pasteContent: "abc" });
+
+    applyEvent(session, paste, AT);
+    const afterFirst = session.lastActivityAt;
+
+    // A replay carries the original observation; it must not look like new
+    // activity, or a retrying client could hold a dead session alive forever.
+    const replay = applyEvent(session, { ...paste, eventId: "replay" }, AT + HORIZON_MS * 5);
+    assert.equal(replay.duplicate, true);
+    assert.equal(session.lastActivityAt, afterFirst);
+  });
+
+  test("a projection inside the horizon is not stale", () => {
+    const session = observedAt(AT);
+    assert.equal(isStale(session, HORIZON_SECONDS, AT + HORIZON_MS - 1), false);
+  });
+
+  test("the exact horizon boundary is not stale", () => {
+    const session = observedAt(AT);
+    assert.equal(
+      isStale(session, HORIZON_SECONDS, AT + HORIZON_MS),
+      false,
+      "the horizon is exceeded only strictly past it",
+    );
+  });
+
+  test("a projection past the horizon is stale", () => {
+    const session = observedAt(AT);
+    assert.equal(isStale(session, HORIZON_SECONDS, AT + HORIZON_MS + 1), true);
+  });
+
+  test("a non-positive horizon disables staleness entirely", () => {
+    const session = observedAt(AT);
+    assert.equal(isStale(session, 0, AT + HORIZON_MS * 100), false);
+    assert.equal(isStale(session, -1, AT + HORIZON_MS * 100), false);
+  });
+
+  test("a projection that was never observed is never stale", () => {
+    const session = createSessionState({
+      sessionId: "session-1",
+      candidateId: "candidate-1",
+      assessmentId: "assessment-1",
+    });
+    assert.equal(session.lastActivityAt, 0);
+    assert.equal(
+      isStale(session, HORIZON_SECONDS, AT),
+      false,
+      "there is no activity to measure, so the session must not be evicted",
+    );
+  });
+
+  test("a non-finite clock reading never reports staleness", () => {
+    const session = observedAt(AT);
+    assert.equal(isStale(session, HORIZON_SECONDS, Number.NaN), false);
+    assert.equal(isStale(session, Number.NaN, AT + HORIZON_MS * 10), false);
+  });
+
+  test("the registry evicts only the stale projections", () => {
+    const registry = new SessionRegistry();
+    const stale = observedAt(AT);
+    stale.sessionId = "stale";
+    // Observed one second before the check, so it is well inside the horizon.
+    const fresh = observedAt(AT + HORIZON_MS);
+    fresh.sessionId = "fresh";
+
+    registry.set(stale);
+    registry.set(fresh);
+
+    const evicted = registry.evictStale(HORIZON_SECONDS, AT + HORIZON_MS + 1);
+
+    assert.equal(evicted, 1);
+    assert.equal(registry.has("stale"), false);
+    assert.equal(registry.has("fresh"), true);
+    assert.equal(registry.size, 1);
+  });
+
+  test("evicting an empty registry reports nothing removed", () => {
+    assert.equal(new SessionRegistry().evictStale(HORIZON_SECONDS, AT), 0);
+  });
+});
+
+describe("settled-session recovery", () => {
+  test("a recovered session with a settled status is marked submitted", () => {
+    for (const status of ["submitted", "flagged", "evaluated"]) {
+      const recovered = hydrateFromPersisted({
+        session: {
+          sessionId: "session-1",
+          candidateId: "candidate-1",
+          assessmentId: "assessment-1",
+          status,
+        },
+        events: [],
+      });
+      assert.equal(recovered.status, status);
+      assert.equal(recovered.submitted, true, `${status} means the answer is already final`);
+    }
+  });
+
+  test("a recovered in-progress session is not marked submitted", () => {
+    const recovered = hydrateFromPersisted({
+      session: {
+        sessionId: "session-1",
+        candidateId: "candidate-1",
+        assessmentId: "assessment-1",
+        status: "in_progress",
+      },
+      events: [],
+    });
+    assert.equal(recovered.submitted, false);
+  });
+
+  test("a recovered submitted session is never re-analysed", () => {
+    // Regression: recovery used to leave `submitted` false while carrying the
+    // persisted "submitted" status, so `shouldAnalyze` saw a live session and
+    // spent a fresh paid model call on an answer that was already final.
+    const recovered = hydrateFromPersisted({
+      session: {
+        sessionId: "session-1",
+        candidateId: "candidate-1",
+        assessmentId: "assessment-1",
+        status: "submitted",
+        submittedCode: "const finalAnswer = () => 'already reviewed';",
+      },
+      events: [
+        event("PASTE_TRIGGER", { pasteContent: "x".repeat(60) }, { timestamp: "2026-01-01T00:00:01.000Z" }),
+        event("PASTE_TRIGGER", { pasteContent: "y".repeat(60) }, { timestamp: "2026-01-01T00:00:02.000Z" }),
+        event("PASTE_TRIGGER", { pasteContent: "z".repeat(60) }, { timestamp: "2026-01-01T00:00:03.000Z" }),
+        event("PASTE_TRIGGER", { pasteContent: "w".repeat(60) }, { timestamp: "2026-01-01T00:00:04.000Z" }),
+        event("PASTE_TRIGGER", { pasteContent: "v".repeat(60) }, { timestamp: "2026-01-01T00:00:05.000Z" }),
+        event("PASTE_TRIGGER", { pasteContent: "u".repeat(60) }, { timestamp: "2026-01-01T00:00:06.000Z" }),
+      ],
+    });
+
+    assert.ok(recovered.pasteCount > THRESHOLDS.maxPasteEventsPerSession);
+    assert.equal(
+      shouldAnalyze(recovered, THRESHOLDS),
+      false,
+      "a submitted answer must not trigger another paid analysis after recovery",
+    );
+  });
+
+  test("recovery seeds activity from the newest stored observation", () => {
+    const recovered = hydrateFromPersisted({
+      session: {
+        sessionId: "session-1",
+        candidateId: "candidate-1",
+        assessmentId: "assessment-1",
+      },
+      events: [
+        event("TAB_SWITCH", {}, { timestamp: "2026-01-01T00:00:30.000Z" }),
+        event("KEYSTROKE", { deltaMs: 100 }, { timestamp: "2026-01-01T00:00:10.000Z" }),
+        event("COPY_ATTEMPT", {}, { timestamp: "2026-01-01T00:00:20.000Z" }),
+      ],
+    });
+
+    assert.equal(
+      recovered.lastActivityAt,
+      Date.parse("2026-01-01T00:00:30.000Z"),
+      "the horizon must measure candidate activity, not the moment of recovery",
+    );
+  });
+
+  test("recovery without stored observations leaves activity unknown", () => {
+    const recovered = hydrateFromPersisted({
+      session: { sessionId: "session-1", candidateId: "candidate-1", assessmentId: "assessment-1" },
+      events: [],
+    });
+    assert.equal(recovered.lastActivityAt, 0);
+    assert.equal(isStale(recovered, 3600, Date.now()), false);
   });
 });

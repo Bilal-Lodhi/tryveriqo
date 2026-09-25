@@ -98,7 +98,7 @@ so every call silently fell back to a different model. Do not reintroduce it.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SESSION_TTL_SECONDS` | `7200` | Session staleness horizon |
+| `SESSION_TTL_SECONDS` | `7200` | Live-projection staleness horizon; `0` disables eviction |
 | `MAX_PASTE_EVENTS` | `5` | Paste events in a session before analysis is triggered |
 | `MIN_HUMAN_KEYSTROKE_MS` | `80` | Keystrokes faster than this count as implausible |
 | `PLAGIARISM_THRESHOLD` | `0.75` | Similarity above which the report raises a concern |
@@ -106,6 +106,33 @@ so every call silently fell back to a different model. Do not reintroduce it.
 
 Raising `MAX_PASTE_EVENTS` or `ALERT_SCORE_THRESHOLD` makes the system quieter;
 lowering them makes it noisier. Neither changes whether a signal is *true*.
+
+#### What `SESSION_TTL_SECONDS` does and does not do
+
+The API keeps a live, in-process projection of each active session so that
+integrity thresholds can be evaluated on the ingestion hot path without a
+database round trip. `SESSION_TTL_SECONDS` is the staleness horizon for that
+projection: once a session has received no telemetry for longer than the
+horizon, the projection is dropped and the next batch rebuilds it from the
+stored record.
+
+It is deliberately **not** a data-retention or deletion policy:
+
+| | Effect of exceeding `SESSION_TTL_SECONDS` |
+| --- | --- |
+| In-memory session projection | **Dropped.** Rebuilt from the store on the next batch |
+| `assessment_sessions` record | Unchanged |
+| Stored telemetry and integrity reports | Unchanged |
+| Candidate token validity | Unchanged — that is `CANDIDATE_SESSION_TTL_SECONDS` |
+
+Nothing in the product expires stored candidate data on a timer. Deleting a
+session's durable record is an explicit operator action
+(`DELETE /api/v1/integrity/sessions/:sessionId`), and retention beyond that is
+the operator's responsibility — see
+[docs/security/threat-model.md](security/threat-model.md#telemetry-sensitivity).
+
+Setting the horizon to `0` disables eviction, so every session this process has
+observed stays in memory until it is terminated or the process restarts.
 
 ### Console operator token
 

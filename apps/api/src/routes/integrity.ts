@@ -79,6 +79,21 @@ export function integrityRoutes(deps: ApiDependencies): Hono<AppEnv> {
       );
     }
 
+    // ── Enforce the staleness horizon ────────────────────────────
+    // A live projection that has been idle for longer than
+    // `SESSION_TTL_SECONDS` is dropped before this batch is resolved, so a
+    // session that resumes after a long pause is rebuilt from its durable
+    // record rather than trusted as a stale in-memory one. Only the projection
+    // is removed; the stored session and its telemetry are untouched.
+    const now = Date.now();
+    const evicted = sessions.evictStale(config.integrity.sessionTtlSeconds, now);
+    if (evicted > 0) {
+      log(
+        `[integrity] [${requestId}] Evicted ${evicted} stale session projection(s) ` +
+          `(SESSION_TTL_SECONDS=${config.integrity.sessionTtlSeconds}).`,
+      );
+    }
+
     // ── Resolve or recover the session projection ────────────────
     const resolution = await resolveSession(sessionId, events, deps, requestId);
     if (!resolution.ok) {
@@ -92,7 +107,7 @@ export function integrityRoutes(deps: ApiDependencies): Hono<AppEnv> {
     // telemetry, so writing a replay would show the same action twice and
     // inflate every count derived from the timeline.
     const codeBeforeBatch = session.currentCode;
-    const decisions = decideAndApplyEvents(session, events);
+    const decisions = decideAndApplyEvents(session, events, now);
     sessions.set(session);
 
     const appliedCount = decisions.filter((decision) => decision.applied).length;
@@ -228,9 +243,11 @@ export function integrityRoutes(deps: ApiDependencies): Hono<AppEnv> {
     const requestId = c.get("correlationId") ?? crypto.randomUUID();
 
     const deleted = await deleteSession(mcp, sessionId);
-    sessions.delete(sessionId);
 
     if (!deleted.ok) {
+      // The projection is deliberately kept when the store refuses the delete:
+      // evicting it here would report a failed termination while silently
+      // dropping the live view of a session that is still present in the store.
       log(`[integrity] [${requestId}] Termination persistence failed: ${deleted.error ?? "unknown"}`);
       return c.json(
         {
@@ -242,6 +259,7 @@ export function integrityRoutes(deps: ApiDependencies): Hono<AppEnv> {
       );
     }
 
+    sessions.delete(sessionId);
     log(`[integrity] [${requestId}] Session ${sessionId} terminated and removed.`);
     return c.json({ success: true, sessionId, deleted: true, correlationId: requestId });
   });
@@ -315,6 +333,17 @@ async function resolveSession(
       events: storedEvents,
     });
 
+    // Carry the last stored analysis forward. Without this, a recovered session
+    // whose code has not changed since it was last analysed would be analysed
+    // again — a repeated paid model call for identical input. Recovery now
+    // happens on every staleness eviction, not only after a restart, so this
+    // guard is what keeps enforcing the horizon free of cost side effects.
+    const lastStoredReport = latestStoredReport(review.data.integrityReports ?? []);
+    if (lastStoredReport) {
+      recovered.lastIntegrityReport = lastStoredReport;
+      recovered.lastAnalyzedCodeHash = await sha256(recovered.currentCode);
+    }
+
     sessions.set(recovered);
     log(
       `[integrity] [${requestId}] Recovered session ${sessionId} from the store ` +
@@ -349,8 +378,59 @@ async function resolveSession(
   return { ok: true, session: fresh };
 }
 
-function sessionSummary(session: SessionState): Record<string, unknown> {
+/**
+ * Picks the most recent stored integrity report that is safe to reuse, or null.
+ *
+ * Selection is by newest `generatedAt` rather than by array position, so it does
+ * not silently invert if the store's sort order ever changes. When no entry
+ * carries a parseable timestamp the store's documented newest-first order is
+ * used as the tie-break.
+ *
+ * Stored documents are untrusted input here — they may predate the current
+ * shape, or carry a non-numeric score. A report is only reusable when it has a
+ * finite `overallScore`, because that value drives the alert threshold and is
+ * returned to the caller.
+ */
+function latestStoredReport(reports: readonly Record<string, unknown>[]): IntegrityReport | null {
+  let best: Record<string, unknown> | null = null;
+  let bestAt = Number.NEGATIVE_INFINITY;
+
+  for (const raw of reports) {
+    if (!raw) continue;
+    const at = new Date(String(raw["generatedAt"] ?? "")).getTime();
+    if (Number.isFinite(at) && at > bestAt) {
+      bestAt = at;
+      best = raw;
+    }
+  }
+
+  // No usable timestamps: the store returns reports newest-first.
+  best ??= reports.find((raw) => raw) ?? null;
+  if (!best) return null;
+
+  const score = Number(best["overallScore"]);
+  if (!Number.isFinite(score)) return null;
+
   return {
+    integrityReportId: String(best["integrityReportId"] ?? best["_id"] ?? crypto.randomUUID()),
+    sessionId: String(best["sessionId"] ?? ""),
+    candidateId: String(best["candidateId"] ?? ""),
+    assessmentId: String(best["assessmentId"] ?? ""),
+    overallScore: score,
+    flags: Array.isArray(best["flags"]) ? (best["flags"] as IntegrityReport["flags"]) : [],
+    plagiarismReport:
+      (best["plagiarismReport"] as IntegrityReport["plagiarismReport"] | undefined) ?? null,
+    behavioralAnomalies: Array.isArray(best["behavioralAnomalies"])
+      ? (best["behavioralAnomalies"] as IntegrityReport["behavioralAnomalies"])
+      : [],
+    ...(best["keystrokeMetrics"]
+      ? { keystrokeMetrics: best["keystrokeMetrics"] as IntegrityReport["keystrokeMetrics"] }
+      : {}),
+    generatedAt: String(best["generatedAt"] ?? nowIso()),
+  };
+}
+
+function sessionSummary(session: SessionState): Record<string, unknown> {  return {
     sessionId: session.sessionId,
     candidateId: session.candidateId,
     assessmentId: session.assessmentId,

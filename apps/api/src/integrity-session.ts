@@ -49,6 +49,12 @@ export interface SessionState {
   recentEventFingerprints: Set<string>;
   /** True when this projection was rebuilt from the persisted record. */
   recoveredFromStore: boolean;
+  /**
+   * Epoch milliseconds of the most recent observation folded into this
+   * projection, or 0 when it has never been observed. This is what the
+   * `SESSION_TTL_SECONDS` staleness horizon is measured against.
+   */
+  lastActivityAt: number;
 }
 
 /** Maximum fingerprints retained per session. */
@@ -62,6 +68,7 @@ export function createSessionState(seed: {
   status?: SessionStatus;
   currentCode?: string;
   recoveredFromStore?: boolean;
+  lastActivityAt?: number;
 }): SessionState {
   return {
     sessionId: seed.sessionId,
@@ -78,12 +85,23 @@ export function createSessionState(seed: {
     fullscreenExitCount: 0,
     copyAttemptCount: 0,
     devToolsOpenCount: 0,
-    submitted: false,
+    submitted: isSettledStatus(seed.status ?? "in_progress"),
     lastIntegrityReport: null,
     lastAnalyzedCodeHash: "",
     recentEventFingerprints: new Set<string>(),
     recoveredFromStore: seed.recoveredFromStore ?? false,
+    lastActivityAt: seed.lastActivityAt ?? 0,
   };
+}
+
+/**
+ * True for the statuses in which the candidate's answer is already final. A
+ * settled session must never be re-analysed, and its persisted code snapshot is
+ * frozen, so `submitted` is derived from the status rather than tracked
+ * separately on every reconstruction path.
+ */
+export function isSettledStatus(status: SessionStatus): boolean {
+  return status === "submitted" || status === "flagged" || status === "evaluated";
 }
 
 /**
@@ -138,14 +156,20 @@ function rememberFingerprint(session: SessionState, fingerprint: string): void {
 /**
  * Folds one telemetry event into a session projection.
  * Duplicate events are dropped without touching any counter.
+ *
+ * `now` is supplied by the caller rather than read from a clock here, so the
+ * staleness horizon is testable without sleeping.
  */
-export function applyEvent(session: SessionState, event: MicroEvent): ApplyEventOutcome {
+export function applyEvent(session: SessionState, event: MicroEvent, now?: number): ApplyEventOutcome {
   const fingerprint = eventFingerprint(event);
   if (session.recentEventFingerprints.has(fingerprint)) {
     return { applied: false, duplicate: true };
   }
 
   session.events.push(event);
+  if (typeof now === "number" && Number.isFinite(now)) {
+    session.lastActivityAt = now;
+  }
 
   switch (event.eventType) {
     case "KEYSTROKE":
@@ -218,12 +242,13 @@ export interface EventDecision {
 export function decideAndApplyEvents(
   session: SessionState,
   events: readonly MicroEvent[],
+  now?: number,
 ): EventDecision[] {
   return events.map((event) => {
     if (session.recentEventFingerprints.has(eventFingerprint(event))) {
       return { event, applied: false, duplicate: true };
     }
-    applyEvent(session, event);
+    applyEvent(session, event, now);
     return { event, applied: true, duplicate: false };
   });
 }
@@ -232,15 +257,36 @@ export function decideAndApplyEvents(
 export function applyEvents(
   session: SessionState,
   events: readonly MicroEvent[],
+  now?: number,
 ): { appliedCount: number; duplicateCount: number } {
   let appliedCount = 0;
   let duplicateCount = 0;
   for (const event of events) {
-    const outcome = applyEvent(session, event);
+    const outcome = applyEvent(session, event, now);
     if (outcome.applied) appliedCount += 1;
     else duplicateCount += 1;
   }
   return { appliedCount, duplicateCount };
+}
+
+/**
+ * True when a live projection has received no observation for longer than the
+ * configured staleness horizon (`SESSION_TTL_SECONDS`).
+ *
+ * Two cases are deliberately *not* stale:
+ *   - a non-positive horizon, which means the operator disabled eviction;
+ *   - a projection with no recorded activity, because there is nothing to
+ *     measure. Guessing would evict a session the server simply never observed.
+ *
+ * Eviction only drops the in-process projection. The durable session record and
+ * its telemetry are never touched, so a later batch recovers the session from
+ * the store instead of losing it.
+ */
+export function isStale(session: SessionState, ttlSeconds: number, now: number): boolean {
+  if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) return false;
+  if (!Number.isFinite(now) || !Number.isFinite(session.lastActivityAt)) return false;
+  if (session.lastActivityAt <= 0) return false;
+  return now - session.lastActivityAt > ttlSeconds * 1000;
 }
 
 /**
@@ -293,7 +339,22 @@ export function hydrateFromPersisted(input: {
     session.currentCode = input.codeFromReports;
   }
 
+  // Activity is seeded from the newest stored observation, so the staleness
+  // horizon measures real candidate activity rather than the moment this
+  // process happened to recover the session.
+  session.lastActivityAt = newestObservationMs(ordered);
+
   return session;
+}
+
+/** Epoch milliseconds of the newest observation, or 0 when there is none. */
+function newestObservationMs(events: readonly MicroEvent[]): number {
+  let newest = 0;
+  for (const event of events) {
+    const parsed = new Date(event.timestamp).getTime();
+    if (Number.isFinite(parsed) && parsed > newest) newest = parsed;
+  }
+  return newest;
 }
 
 function normaliseStatus(raw: string | undefined): SessionStatus {
@@ -401,6 +462,26 @@ export class SessionRegistry {
 
   get size(): number {
     return this.sessions.size;
+  }
+
+  /**
+   * Drops every live projection that has been idle for longer than
+   * `ttlSeconds`, and reports how many were dropped.
+   *
+   * This is the enforcement point for `SESSION_TTL_SECONDS`. Only the
+   * in-process projection is removed: the durable session record and its
+   * telemetry are untouched, and a later batch rehydrates the session from the
+   * store.
+   */
+  evictStale(ttlSeconds: number, now: number): number {
+    let evicted = 0;
+    for (const [sessionId, session] of this.sessions) {
+      if (isStale(session, ttlSeconds, now)) {
+        this.sessions.delete(sessionId);
+        evicted += 1;
+      }
+    }
+    return evicted;
   }
 
   clear(): void {

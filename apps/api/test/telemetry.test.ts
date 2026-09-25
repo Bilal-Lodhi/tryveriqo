@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 
 import { MCP_TOOLS } from "@assessment/mcp-mongodb";
 import { buildApp } from "../src/app.js";
-import { SessionRegistry } from "../src/integrity-session.js";
+import { SessionRegistry, createSessionState } from "../src/integrity-session.js";
 import {
   StubAiClient,
   StubMcpClient,
@@ -459,6 +459,307 @@ describe("submission snapshot persistence", () => {
       0,
       "a submitted session's snapshot must stay frozen",
     );
+  });
+});
+
+describe("session staleness horizon", () => {
+  /** A projection that has been idle for `idleMs` and holds real signals. */
+  function idleProjection(idleMs: number) {
+    const session = createSessionState({
+      sessionId: "session-1",
+      candidateId: "candidate-1",
+      assessmentId: "assessment-1",
+      lastActivityAt: Date.now() - idleMs,
+    });
+    return session;
+  }
+
+  test("a live projection inside the horizon is reused without a store round trip", async () => {
+    const { app, mcp, sessions } = makeHarness();
+    sessions.set(idleProjection(60_000));
+
+    const response = await ingest(app, [telemetryEvent({ eventType: "TAB_SWITCH" })]);
+
+    assert.equal(response.status, 200);
+    assert.equal(
+      mcp.callsFor(MCP_TOOLS.GET_SESSION_REVIEW).length,
+      0,
+      "a session that is still live must not be looked up again",
+    );
+  });
+
+  test("a projection past the horizon is evicted and rebuilt from the store", async () => {
+    const { app, mcp, sessions } = makeHarness({ existingSession: true });
+    // testConfig sets SESSION_TTL_SECONDS to 3600; two hours idle exceeds it.
+    sessions.set(idleProjection(2 * 3600 * 1000));
+    assert.equal(sessions.size, 1);
+
+    const response = await ingest(app, [telemetryEvent({ eventType: "TAB_SWITCH" })]);
+    assert.equal(response.status, 200);
+
+    assert.equal(
+      mcp.callsFor(MCP_TOOLS.GET_SESSION_REVIEW).length,
+      1,
+      "the stale projection must be rebuilt from its durable record",
+    );
+
+    const summary = await app.request("/api/v1/integrity/sessions/session-1", {
+      headers: OPERATOR,
+    });
+    const body = (await summary.json()) as { session: { recoveredFromStore: boolean } };
+    assert.equal(body.session.recoveredFromStore, true);
+  });
+
+  test("eviction is disabled by a non-positive horizon", async () => {
+    const ai = new StubAiClient();
+    const mcp = new StubMcpClient().respond(MCP_TOOLS.GET_SESSION_REVIEW, () => ({
+      success: true,
+      session: null,
+      events: [],
+      integrityReports: [],
+    }));
+
+    const sessions = new SessionRegistry();
+    const app = buildApp({
+      config: testConfig({ integrity: { sessionTtlSeconds: 0 } }),
+      ai,
+      mcp,
+      sessions,
+      log: () => undefined,
+      requestLogging: false,
+    });
+
+    sessions.set(idleProjection(30 * 24 * 3600 * 1000));
+    await ingest(app, [telemetryEvent({ eventType: "TAB_SWITCH" })]);
+
+    assert.equal(
+      mcp.callsFor(MCP_TOOLS.GET_SESSION_REVIEW).length,
+      0,
+      "SESSION_TTL_SECONDS=0 means eviction is off, not immediate",
+    );
+  });
+
+  test("enforcing the horizon does not repeat a paid analysis for unchanged code", async () => {
+    const code = "const stable = () => 'a long enough code body to be analysed'.repeat(2);";
+    const storedEvents = Array.from({ length: 6 }, (_, index) => ({
+      eventType: "PASTE_TRIGGER",
+      timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+      payload: { pasteContent: `${code} // ${index}` },
+    }));
+
+    const ai = new StubAiClient();
+    const mcp = new StubMcpClient()
+      .respond(MCP_TOOLS.GET_SESSION_REVIEW, () => ({
+        success: true,
+        session: {
+          sessionId: "session-1",
+          candidateId: "candidate-1",
+          assessmentId: "assessment-1",
+          status: "in_progress",
+          submittedCode: code,
+        },
+        events: storedEvents,
+        integrityReports: [
+          { integrityReportId: "report-newest", overallScore: 80, generatedAt: "2026-01-01T02:00:00.000Z" },
+          { integrityReportId: "report-oldest", overallScore: 10, generatedAt: "2026-01-01T01:00:00.000Z" },
+        ],
+      }))
+      .respond(MCP_TOOLS.INGEST_MICRO_EVENTS, () => ({ success: true, processedCount: 1 }))
+      .respond(MCP_TOOLS.STORE_INTEGRITY_REPORT, () => ({ success: true }));
+
+    const sessions = new SessionRegistry();
+    const app = buildApp({
+      config: testConfig(),
+      ai,
+      mcp,
+      sessions,
+      log: () => undefined,
+      requestLogging: false,
+    });
+
+    sessions.set(idleProjection(2 * 3600 * 1000));
+
+    // A copy attempt changes no code, so the recovered snapshot still matches
+    // the stored analysis and no model call is warranted.
+    const response = await ingest(app, [
+      telemetryEvent({ eventType: "COPY_ATTEMPT", payload: { selectedText: "x" } }),
+    ]);
+    assert.equal(response.status, 200);
+
+    assert.equal(
+      ai.calls.includes("analyzeIntegrity"),
+      false,
+      "recovering a session must not spend a fresh model call on unchanged code",
+    );
+
+    const body = (await response.json()) as { integrityReport: { overallScore: number } | null };
+    assert.equal(
+      body.integrityReport?.overallScore,
+      80,
+      "the reused report must be the newest stored one, not the oldest",
+    );
+  });
+
+  test("recovery without a stored report still analyses", async () => {
+    const code = "const stable = () => 'a long enough code body to be analysed'.repeat(2);";
+
+    const ai = new StubAiClient();
+    const mcp = new StubMcpClient()
+      .respond(MCP_TOOLS.GET_SESSION_REVIEW, () => ({
+        success: true,
+        session: {
+          sessionId: "session-1",
+          candidateId: "candidate-1",
+          assessmentId: "assessment-1",
+          status: "in_progress",
+          submittedCode: code,
+        },
+        events: Array.from({ length: 6 }, (_, index) => ({
+          eventType: "PASTE_TRIGGER",
+          timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+          payload: { pasteContent: `${code} // ${index}` },
+        })),
+        integrityReports: [],
+      }))
+      .respond(MCP_TOOLS.INGEST_MICRO_EVENTS, () => ({ success: true, processedCount: 1 }))
+      .respond(MCP_TOOLS.STORE_INTEGRITY_REPORT, () => ({ success: true }));
+
+    const app = buildApp({
+      config: testConfig(),
+      ai,
+      mcp,
+      sessions: new SessionRegistry(),
+      log: () => undefined,
+      requestLogging: false,
+    });
+
+    await ingest(app, [
+      telemetryEvent({ eventType: "COPY_ATTEMPT", payload: { selectedText: "x" } }),
+    ]);
+
+    assert.equal(
+      ai.calls.includes("analyzeIntegrity"),
+      true,
+      "with no stored analysis there is nothing to reuse, so the model must run",
+    );
+  });
+
+  test("a recovered submitted session is not analysed again", async () => {
+    const code = "const finalAnswer = () => 'a long enough final answer body to analyse';";
+
+    const ai = new StubAiClient();
+    const mcp = new StubMcpClient()
+      .respond(MCP_TOOLS.GET_SESSION_REVIEW, () => ({
+        success: true,
+        session: {
+          sessionId: "session-1",
+          candidateId: "candidate-1",
+          assessmentId: "assessment-1",
+          status: "submitted",
+          submittedCode: code,
+        },
+        events: Array.from({ length: 6 }, (_, index) => ({
+          eventType: "PASTE_TRIGGER",
+          timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+          payload: { pasteContent: `${code} // ${index}` },
+        })),
+        integrityReports: [],
+      }))
+      .respond(MCP_TOOLS.INGEST_MICRO_EVENTS, () => ({ success: true, processedCount: 1 }));
+
+    const sessions = new SessionRegistry();
+    const app = buildApp({
+      config: testConfig(),
+      ai,
+      mcp,
+      sessions,
+      log: () => undefined,
+      requestLogging: false,
+    });
+
+    sessions.set(idleProjection(2 * 3600 * 1000));
+    await ingest(app, [
+      telemetryEvent({ eventType: "COPY_ATTEMPT", payload: { selectedText: "x" } }),
+    ]);
+
+    assert.equal(
+      ai.calls.includes("analyzeIntegrity"),
+      false,
+      "an answer that was already submitted must not be re-analysed after recovery",
+    );
+  });
+});
+
+describe("session termination", () => {
+  test("a failed store delete keeps the live projection", async () => {
+    const ai = new StubAiClient();
+    const mcp = new StubMcpClient().failTool(MCP_TOOLS.DELETE_SESSION, "write concern failed");
+    const sessions = new SessionRegistry();
+
+    const app = buildApp({
+      config: testConfig(),
+      ai,
+      mcp,
+      sessions,
+      log: () => undefined,
+      requestLogging: false,
+    });
+
+    sessions.set(
+      createSessionState({
+        sessionId: "session-1",
+        candidateId: "candidate-1",
+        assessmentId: "assessment-1",
+        lastActivityAt: Date.now(),
+      }),
+    );
+
+    const response = await app.request("/api/v1/integrity/sessions/session-1", {
+      method: "DELETE",
+      headers: OPERATOR,
+    });
+
+    assert.equal(response.status, 502);
+    assert.equal(
+      sessions.has("session-1"),
+      true,
+      "a refused termination must not silently drop the live view of a session that still exists",
+    );
+  });
+
+  test("a successful store delete removes the live projection", async () => {
+    const ai = new StubAiClient();
+    const mcp = new StubMcpClient().respond(MCP_TOOLS.DELETE_SESSION, () => ({
+      success: true,
+      deleted: true,
+    }));
+    const sessions = new SessionRegistry();
+
+    const app = buildApp({
+      config: testConfig(),
+      ai,
+      mcp,
+      sessions,
+      log: () => undefined,
+      requestLogging: false,
+    });
+
+    sessions.set(
+      createSessionState({
+        sessionId: "session-1",
+        candidateId: "candidate-1",
+        assessmentId: "assessment-1",
+        lastActivityAt: Date.now(),
+      }),
+    );
+
+    const response = await app.request("/api/v1/integrity/sessions/session-1", {
+      method: "DELETE",
+      headers: OPERATOR,
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(sessions.has("session-1"), false);
   });
 });
 
