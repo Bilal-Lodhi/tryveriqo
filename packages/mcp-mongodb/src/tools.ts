@@ -296,13 +296,25 @@ export function registeredToolNames(handlers: ToolHandlerTable): McpToolName[] {
  * Invokes one tool by name, converting thrown errors into a stable
  * `{ success: false, error }` payload rather than an exception at the
  * transport edge.
+ *
+ * Lookup is restricted to the table's **own** properties. The handler table is a
+ * plain object literal, so a bare `handlers[toolName]` walks the prototype chain
+ * and resolves `constructor`, `toString`, `hasOwnProperty`, `__proto__` and
+ * friends to `Object.prototype` members. Those are truthy, so an undeclared name
+ * passed the "is this a real tool?" check and was invoked as though it were one,
+ * returning `200` with a payload fabricated from the caller's arguments instead
+ * of the `404` the transport owes. A test that used only the invented name
+ * `no_such_tool` could never catch it, because that name does not collide with
+ * the prototype.
  */
 export async function dispatchTool(
   handlers: ToolHandlerTable,
   toolName: string,
   args: ToolArguments,
 ): Promise<{ status: number; payload: unknown }> {
-  const handler = (handlers as Record<string, ToolHandler | undefined>)[toolName];
+  const handler = Object.hasOwn(handlers, toolName)
+    ? (handlers as Record<string, ToolHandler | undefined>)[toolName]
+    : undefined;
 
   if (!handler) {
     return {

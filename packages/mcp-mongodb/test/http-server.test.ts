@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import {
   COLLECTIONS,
   MCP_TOOLS,
+  MCP_TOOL_NAMES,
   MongoStore,
   createMcpHttpServer,
   type DbLike,
@@ -132,6 +133,36 @@ describe("authenticated tool dispatch over HTTP", () => {
     assert.equal(result.status, 404);
     assert.match(String(result.body["error"]), /Unknown tool/);
     assert.ok(Array.isArray(result.body["availableTools"]));
+  });
+
+  test("a tool name that collides with Object.prototype is not a tool", async () => {
+    // `constructor`, `toString` and friends are inherited properties of the
+    // handler table, so a prototype-chain lookup treated them as real handlers
+    // and answered 200 with a fabricated payload.
+    for (const name of [
+      "constructor",
+      "toString",
+      "valueOf",
+      "hasOwnProperty",
+      "__proto__",
+      "isPrototypeOf",
+    ]) {
+      const result = await callTool(name, {}, TOKEN);
+      assert.equal(result.status, 404, `expected 404 for '${name}', got ${result.status}`);
+      assert.match(String(result.body["error"]), /Unknown tool/);
+    }
+  });
+
+  test("the advertised tool list contains only declared tools", async () => {
+    const listed = await fetch(`http://127.0.0.1:${port}/tools`, {
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+    const body = (await listed.json()) as { tools: string[] };
+
+    for (const name of ["constructor", "toString", "hasOwnProperty", "__proto__"]) {
+      assert.equal(body.tools.includes(name), false, `'${name}' must not be advertised`);
+    }
+    assert.deepEqual([...body.tools].sort(), [...MCP_TOOL_NAMES].sort());
   });
 
   test("a malformed argument is a client error, not a server error", async () => {
