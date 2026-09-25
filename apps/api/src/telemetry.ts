@@ -14,6 +14,35 @@ export const MAX_EVENTS_PER_BATCH = 500;
 /** Maximum stored size for any single free-text telemetry field. */
 export const MAX_PAYLOAD_TEXT_LENGTH = 20_000;
 
+/**
+ * Maximum free text accepted across one batch, counted in characters.
+ *
+ * Without this, the documented per-field and per-batch caps compose into roughly
+ * 30 MB of legitimate content for a single request — 500 events × three
+ * free-text fields × 20,000 characters — which is not a bound anyone intended.
+ * This makes the batch-level limit explicit and keeps it comfortably inside the
+ * request-body ceiling, even allowing for multi-byte characters and JSON
+ * escaping.
+ */
+export const MAX_BATCH_TEXT_LENGTH = 500_000;
+
+/** Free-text payload fields counted against the batch budget. */
+const TEXT_FIELDS = ["pasteContent", "selectedText", "diffPatch"] as const;
+
+/** Characters of free text carried by one raw event, before truncation. */
+function rawTextLength(source: Record<string, unknown>): number {
+  const payload = source["payload"];
+  if (payload === null || typeof payload !== "object") return 0;
+
+  const fields = payload as Record<string, unknown>;
+  let total = 0;
+  for (const field of TEXT_FIELDS) {
+    const value = fields[field];
+    if (typeof value === "string") total += value.length;
+  }
+  return total;
+}
+
 const EVENT_TYPES: readonly MicroEventType[] = [
   "KEYSTROKE",
   "PASTE_TRIGGER",
@@ -139,6 +168,7 @@ export function validateIngestRequest(body: unknown): EventValidation {
   const events: MicroEvent[] = [];
   let sessionId: string | null = null;
   let candidateId: string | null = null;
+  let batchTextLength = 0;
 
   for (let index = 0; index < rawEvents.length; index += 1) {
     const raw = rawEvents[index];
@@ -146,6 +176,19 @@ export function validateIngestRequest(body: unknown): EventValidation {
       return { ok: false, error: "Each event must be a JSON object.", index };
     }
     const source = raw as Record<string, unknown>;
+
+    // Counted before anything else so an oversized batch is rejected on a cheap
+    // character count rather than after it has been normalised and stored.
+    batchTextLength += rawTextLength(source);
+    if (batchTextLength > MAX_BATCH_TEXT_LENGTH) {
+      return {
+        ok: false,
+        error:
+          `Free text across one batch must not exceed ${MAX_BATCH_TEXT_LENGTH} characters. ` +
+          "Send fewer events, or split the batch.",
+        index,
+      };
+    }
 
     const eventSessionId = requireNonEmptyString(source, "sessionId");
     if (!eventSessionId) {

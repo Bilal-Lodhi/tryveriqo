@@ -25,4 +25,10 @@ export {
   type ToolHandler,
   type ToolHandlerTable,
 } from "./tools.js";
-export { createMcpHttpServer, type McpHttpServer, type McpHttpServerOptions } from "./http-server.js";
+export {
+  BodyTooLargeError,
+  MAX_MCP_BODY_BYTES,
+  createMcpHttpServer,
+  type McpHttpServer,
+  type McpHttpServerOptions,
+} from "./http-server.js";

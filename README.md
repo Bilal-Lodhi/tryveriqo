@@ -224,8 +224,9 @@ The values that matter most:
   credentials and prints the operator token once; production refuses to start
   without secrets, and refuses to start with open candidate registration.
 * CORS is an explicit allow-list and is never `*`.
-* Telemetry free-text fields are length-bounded on ingestion, and a batch is
-  capped, so a hostile client cannot inflate storage without limit.
+* Telemetry free-text fields are length-bounded on ingestion, a batch is capped,
+  and every route that accepts a body has a size ceiling applied before the body
+  is parsed — so a hostile client cannot inflate storage or memory without limit.
 * Report a vulnerability via [SECURITY.md](SECURITY.md).
 
 ## Contributing

@@ -24,8 +24,14 @@ import {
   type ToolHandlerTable,
 } from "./tools.js";
 
-export interface McpHttpServerOptions {
-  store: MongoStore;
+/** Raised when a request body exceeds `MAX_MCP_BODY_BYTES`. Maps to a 413. */
+export class BodyTooLargeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`Request body exceeds the limit of ${maxBytes} bytes.`);
+  }
+}
+
+export interface McpHttpServerOptions {  store: MongoStore;
   port: number;
   /**
    * Interface to bind. Defaults to loopback, which is right when the API and
@@ -58,10 +64,36 @@ function presentedToken(req: IncomingMessage): string {
   return "";
 }
 
+/**
+ * Ceiling on a tool-call body, in bytes.
+ *
+ * `readJsonBody` used to concatenate every chunk the socket produced, so a caller
+ * could make the transport buffer an arbitrarily large body. The largest
+ * legitimate call is a telemetry batch, whose own limits bound it well below
+ * this.
+ */
+export const MAX_MCP_BODY_BYTES = 8 * 1024 * 1024;
+
 async function readJsonBody(req: IncomingMessage): Promise<ToolArguments> {
+  const declared = req.headers["content-length"];
+  if (typeof declared === "string") {
+    const length = Number.parseInt(declared, 10);
+    if (Number.isFinite(length) && length > MAX_MCP_BODY_BYTES) {
+      throw new BodyTooLargeError(MAX_MCP_BODY_BYTES);
+    }
+  }
+
   const chunks: Buffer[] = [];
+  let size = 0;
   for await (const chunk of req) {
-    chunks.push(chunk as Buffer);
+    const buffer = chunk as Buffer;
+    size += buffer.length;
+    // Counted as it arrives, so a missing or forged Content-Length cannot get
+    // past the ceiling.
+    if (size > MAX_MCP_BODY_BYTES) {
+      throw new BodyTooLargeError(MAX_MCP_BODY_BYTES);
+    }
+    chunks.push(buffer);
   }
   const raw = Buffer.concat(chunks).toString("utf-8");
   if (!raw) return {};
@@ -167,6 +199,10 @@ export function createMcpHttpServer(options: McpHttpServerOptions): McpHttpServe
       try {
         args = await readJsonBody(req);
       } catch (error) {
+        if (error instanceof BodyTooLargeError) {
+          sendJson(res, 413, { success: false, error: error.message });
+          return;
+        }
         sendJson(res, 400, {
           success: false,
           error: error instanceof Error ? error.message : "Invalid JSON body",
