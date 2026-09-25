@@ -67,6 +67,7 @@ Valuable, and explicitly not blockers.
 | B5 | Load, stress and adversarial DoS testing | In-process rate limits are a backstop, not a load-tested defence |
 | B6 | Pagination UI for very long telemetry timelines | The continuation mechanism and the truncation notice ship; a full pager does not |
 | B7 | `npm audit`-driven dependency upgrades beyond security-relevant ones | Avoid churn |
+| B8 | `config.database.uri` is parsed and never read by the API | Filed as issue #31 during the release-gate config census. Not release-blocking: it changes no behaviour, and the MCP process's use of `MONGODB_URI` is correct |
 
 ## C. Accepted limitations carried into v0.2.0
 
@@ -141,3 +142,54 @@ Every claim in the release notes and where it is proven.
 | End-to-end lifecycle | `scripts/smoke.mjs`, `scripts/verify-lifecycle.mjs` against a live stack |
 | Vertex ADC + region + terminal error | One recorded live call — `verification.md` |
 | Vertex **successful** generation | **Not proven.** Stated as unverified |
+
+## F. Release-gate results
+
+Run against the merged candidate. Recorded so the claims are evidence-backed rather
+than asserted.
+
+| Check | Result |
+| --- | --- |
+| `npm ci` against the edited lock | pass |
+| TypeScript typecheck and build | pass |
+| API tests | 366 pass, 0 fail |
+| MCP tests | 78 pass, 0 fail |
+| Console tests | 38 pass, 0 fail |
+| `flutter analyze` / `dart format --set-exit-if-changed` | clean |
+| Credential guard (137 tracked files) | pass |
+| Credential guard `--self-test` (9 scenarios) | pass |
+| Retired-identifier guard (55 runtime files) | pass |
+| Container image build | pass |
+| Production refuses missing secrets | pass — names all four at once |
+| Production refuses `CANDIDATE_REGISTRATION_MODE=open` | pass |
+| Production refuses a short session secret | pass |
+| MCP refuses to start unprotected in production | pass |
+| `npm run smoke` against a live stack | **17 pass, 0 fail** |
+| `npm run verify` against a live stack | **22 pass, 0 fail** |
+| `GET /health` reports the prepared version | pass — `service=tryveriqo-api version=0.2.0` |
+| Relative markdown links resolve (24 files) | pass |
+| Config census: documented env variables referenced | pass — 34 of 34 |
+| Config census: `loadConfig()` fields consumed | **one finding** — `config.database.uri`, filed as #31 |
+| `npm audit` (all deps, and production-only at `high`) | 0 vulnerabilities |
+| `v0.1.0` tag unmoved | pass — `c6eaf96f` → `62b0f5af…` |
+| No `v0.2.0` tag created | pass |
+| `release-notes-v0.1.0.md` untouched | pass — still at `3e7ee35` |
+
+### A note on running the live gate
+
+`docker compose` publishes the API on `8080` and MongoDB on `27017` by default. On
+the machine used for this gate **both ports belonged to an unrelated project**, so
+the first attempt bound nothing and the health check answered from the wrong
+service — visible only because `/health` reported a different `service` name and
+version.
+
+The gate was re-run with `API_PORT=18080` and `MONGO_PORT=17017`, and the service
+identity was confirmed before any workflow ran:
+
+```
+service=tryveriqo-api version=0.2.0 ai=gemini (gemini-api)
+```
+
+Worth recording because a live gate that silently exercises another project's API
+produces failures that look like product bugs. **Check the `service` field in
+`/health` before trusting a live run.**

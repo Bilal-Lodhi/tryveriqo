@@ -343,24 +343,33 @@ rewritten.
 
 ## Verification
 
-The full record is in [`verification.md`](verification.md). Summary of what was run
-for this candidate:
+The full record is in [`verification.md`](verification.md), and the release-gate
+results are tabulated in
+[`checklist-v0.2.0.md`](checklist-v0.2.0.md#f-release-gate-results).
 
 | Check | Result |
 | --- | --- |
 | TypeScript typecheck and build | pass |
-| API tests | 366 pass |
-| MCP tests | 78 pass |
-| Console tests | 38 pass |
+| API tests | **366 pass, 0 fail** |
+| MCP tests | **78 pass, 0 fail** |
+| Console tests | **38 pass, 0 fail** |
 | `flutter analyze` / `dart format` | clean |
-| Credential guard + self-test | pass |
-| Retired-identifier guard | pass |
-| Container image build and fail-closed startup | pass |
-| `npm run smoke` against a live stack | pass |
-| `npm run verify` against a live stack | pass |
-| Dependency audit | no known current advisories |
+| Credential guard + its self-test | pass (137 tracked files, 9 scenarios) |
+| Retired-identifier guard | pass (55 runtime files) |
+| Container image build | pass |
+| Fail-closed production startup (4 cases) | pass |
+| `npm run smoke` against a live self-hosted stack | **17 pass, 0 fail** |
+| `npm run verify` against a live self-hosted stack | **22 pass, 0 fail** |
+| `GET /health` reports the prepared version | `service=tryveriqo-api version=0.2.0` |
+| Relative documentation links resolve | pass (24 files) |
+| Dependency audit | **0 vulnerabilities** |
 
-Live-stack runs were made against a self-hosted Compose deployment, not a stub.
+Live-stack runs were made against a self-hosted Compose deployment, not a stub, and
+the service identity was confirmed from `/health` before any workflow ran.
+
+**One thing the gate did not clear:** a config census found `config.database.uri`
+parsed and never read by the API. It changes no behaviour and is filed as issue #31
+rather than fixed here, because the gate's scope was release preparation.
 
 ## Getting started
 
