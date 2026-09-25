@@ -245,9 +245,13 @@ include.
 
 Stated plainly so it is not mistaken for a pass:
 
-* **Vertex AI transport.** `AI_PROVIDER_MODE=vertex` is implemented and covered by
-  request-construction tests, but no Google Cloud project or ADC was available, so
-  the Vertex path has **not** been exercised live. Only `gemini-api` is verified.
+* **Vertex AI transport — a successful generation.** `AI_PROVIDER_MODE=vertex` is
+  implemented and covered by request-construction tests, and a live call has since
+  been made against a real project with ADC (see "Vertex AI transport: live
+  result" below). That call authenticated, reached the provider and returned a
+  structured `BILLING_DISABLED` refusal, so the transport is exercised but has
+  **never produced a response**, and the parser has never seen a live Vertex
+  shape. Only `gemini-api` has recorded live success.
 * **A hosted reverse-proxy console deployment.** The documented safe pattern is
   described but not deployed here.
 * **Sustained load or adversarial DoS.** In-process rate limits are a backstop, not
@@ -268,3 +272,59 @@ documentation edit, so it is not done here. The current-state documents
 corrections above) carry the accurate position. If the maintainer authorises an
 edit to the release body, this file must be updated in the same change so the two
 stay identical.
+
+## Vertex AI transport: live result (post-v0.1.0)
+
+Issue #1 asked for a real Vertex call. One was made, after v0.1.0, against a real
+Google Cloud project using Application Default Credentials. It did **not** produce
+a generation, and the reason is worth recording precisely.
+
+**Setup.** `AI_PROVIDER_MODE=vertex`, model `gemini-2.5-flash`, region
+`us-central1`, no API key — ADC only. The project id and the credentials file were
+supplied through the process environment and mounted read-only into the container;
+neither appears in any tracked file, which the credential guard enforces.
+
+**Result.**
+
+| Observation | Value |
+| --- | --- |
+| Provider mode reached | `vertex` (confirmed on `/health` as `gemini (vertex)`) |
+| Model | `gemini-2.5-flash` |
+| Region | `us-central1` |
+| ADC discovery | **Worked.** No API key was configured, and the request authenticated |
+| Request reached the provider | **Yes** — a structured Google API error came back |
+| Provider response | `403 PERMISSION_DENIED`, reason `BILLING_DISABLED` |
+| Wall-clock for the full request | ~7.3 s |
+| Parser outcome | **Not reached** — there was no response body to parse |
+| Persistence outcome | **Not reached** |
+| Route status | `500`, `retryable: false` |
+
+**What this proves.** The parts a request-construction test cannot reach:
+
+* **ADC is discovered and used.** The call authenticated with no API key present,
+  which is the whole difference between the two transports.
+* **The configured region is accepted.** No region or model-location error was
+  returned, so `us-central1` is valid for this model on this project.
+* **The request reaches Vertex and comes back as a structured provider error**,
+  not a transport failure, a timeout, or a client-side rejection.
+* **The client's failure semantics are correct on a real provider error.**
+  `PERMISSION_DENIED` was classified as terminal and **not retried** (one attempt,
+  not three), the classifier degraded rather than blocking generation
+  (`Classifier unavailable … continuing to generation`), and the route returned
+  `500` with `retryable: false` rather than a misleading `503`.
+
+**What remains unverified.** A **successful** Vertex generation, and therefore
+`parseTestSuiteResponse` against a live Vertex response shape, and persistence of
+the result. The provider refused before producing output.
+
+**Why, and what it would take.** The project has billing disabled, and Vertex
+requires it. The provider's own message is the actionable error the issue asked
+for, so the transport is not stale or broken — it is gated. Enabling billing on a
+Google Cloud project is a spend decision, which this project's own rules reserve
+for the maintainer, so it was not done. Issue #1 stays open for that reason.
+
+**What a deployment should take from this.** `AI_PROVIDER_MODE=vertex` is
+implemented and reaches the provider, but a successful generation has not been
+observed. `gemini-api` remains the transport with recorded live success. A
+deployment choosing `vertex` should expect to verify its own billing, project and
+region before relying on it.

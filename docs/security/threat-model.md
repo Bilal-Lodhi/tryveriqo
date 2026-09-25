@@ -307,11 +307,16 @@ These are deliberate, documented limitations of a self-hosted v0.1.0:
    exist to bound accidental amplification, not to withstand a determined
    attacker, and they have not been tested under load. A public deployment needs
    an edge limiter in front of it. Nothing here is a capacity or resilience claim.
-7. **The Vertex AI transport is not live-verified.** It is implemented and covered
-   by request-construction tests, but it has never been exercised against a real
-   Google Cloud project or with real Application Default Credentials. A deployment
-   that chooses `AI_PROVIDER_MODE=vertex` is relying on an unverified path; the
-   `gemini-api` mode is the one with recorded live evidence.
+7. **The Vertex AI transport has not produced a live response.** It is implemented
+   and covered by request-construction tests, and a live call against a real
+   project with Application Default Credentials has since been made — that call
+   authenticated, reached the provider and returned a structured
+   `BILLING_DISABLED` refusal, so ADC discovery, region acceptance and the client's
+   terminal-error handling are verified against the real service. A **successful**
+   generation is not: the parser has never seen a live Vertex response shape. A
+   deployment choosing `AI_PROVIDER_MODE=vertex` is relying on a path with no
+   recorded live success; `gemini-api` is the one with recorded evidence. See
+   [docs/release/verification.md](../release/verification.md#vertex-ai-transport-live-result-post-v010).
 
 ### Telemetry sensitivity
 
