@@ -167,9 +167,10 @@ export function integrityRoutes(deps: ApiDependencies): Hono<AppEnv> {
       } else {
         try {
           const keystrokeMetrics = computeKeystrokeMetrics(session.keystrokeDeltas);
-          const pasteContents = session.events
-            .filter((event) => event.eventType === "PASTE_TRIGGER" && event.payload?.pasteContent)
-            .map((event) => event.payload.pasteContent as string);
+          // Read from the bounded paste window rather than by scanning the event
+          // window: trimming the event window must not silently change what an
+          // analysis is shown, and the paste window has its own bound.
+          const pasteContents = session.recentPasteContents;
 
           const analysed = await ai.analyzeIntegrity(
             session.currentCode,
@@ -361,7 +362,16 @@ async function resolveSession(
         submittedCode: review.data.session.submittedCode,
       },
       events: storedEvents,
+      recoveredPartially: review.data.eventsTruncated ?? false,
     });
+
+    if (recovered.recoveredPartially) {
+      log(
+        `[integrity] [${requestId}] Session ${sessionId} recovered from a truncated page ` +
+          `(${storedEvents.length} of ${review.data.eventTotal ?? "unknown"} stored events); ` +
+          "counters are rebuilt from the recovered subset.",
+      );
+    }
 
     // Carry the last stored analysis forward. Without this, a recovered session
     // whose code has not changed since it was last analysed would be analysed
@@ -447,7 +457,14 @@ function sessionSummary(session: SessionState): Record<string, unknown> {
     candidateId: session.candidateId,
     assessmentId: session.assessmentId,
     status: session.status,
-    eventCount: session.events.length,
+    // True totals, never the size of the retained window.
+    eventCount: session.eventsObserved,
+    keystrokeObservations: session.keystrokeObservations,
+    pasteObservations: session.pasteObservations,
+    // Window sizes, so an operator can see the projection is bounded.
+    retainedEvents: session.events.length,
+    retainedKeystrokes: session.keystrokeDeltas.length,
+    retainedPastes: session.recentPasteContents.length,
     pasteCount: session.pasteCount,
     tabSwitchCount: session.tabSwitchCount,
     windowBlurCount: session.windowBlurCount,
@@ -457,6 +474,7 @@ function sessionSummary(session: SessionState): Record<string, unknown> {
     currentCodeLength: session.currentCode.length,
     submitted: session.submitted,
     recoveredFromStore: session.recoveredFromStore,
+    recoveredPartially: session.recoveredPartially,
     lastIntegrityReport: session.lastIntegrityReport,
   };
 }

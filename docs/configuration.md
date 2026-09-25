@@ -141,6 +141,44 @@ request. Exceeding it is a `400` naming the batch, not a silent truncation.
 ceiling, and a generation request reaches a paid model. The ceiling is the
 effective limit today; a tighter per-field bound would be a better one.
 
+### In-memory session projection
+
+The API keeps a live projection of each active session so integrity thresholds can
+be evaluated on the ingestion hot path without a datastore round trip. Its arrays
+are bounded; the counters beside them are **totals** and are never reduced by
+trimming.
+
+| Retained | Bound | True total alongside it |
+| --- | --- | --- |
+| Observations | 1,000 | `eventsObserved` |
+| Keystroke deltas | 2,000 | `keystrokeObservations` |
+| Pasted content | 50 | `pasteObservations` |
+| Event fingerprints | 128 | — |
+
+These are constants, not configuration: they bound memory, and an operator has no
+reason to tune them.
+
+What this does **not** affect:
+
+* **Review.** The reviewer timeline reads stored telemetry through the MCP tool
+  surface, never the projection, so trimming changes nothing a reviewer sees.
+* **Counters.** `pasteCount`, `tabSwitchCount`, `windowBlurCount`,
+  `fullscreenExitCount`, `copyAttemptCount` and `devToolsOpenCount` are totals and
+  keep counting past the window.
+* **Pasted content available to analysis.** It lives in its own bounded window, so
+  trimming the event window cannot silently change what an analysis is shown.
+
+`GET /api/v1/integrity/sessions/:sessionId` (operator-only) reports the true totals
+(`eventCount`, `keystrokeObservations`, `pasteObservations`) alongside the window
+sizes (`retainedEvents`, `retainedKeystrokes`, `retainedPastes`), so an operator
+can see both.
+
+**Recovery from a truncated page is disclosed.** When a session is rebuilt from the
+store, its counters are reconstructed from the events that were fetched. If that
+page was itself truncated — `GET_SESSION_REVIEW` returns at most `eventLimit`
+events — the projection sets `recoveredPartially: true` and logs how many of how
+many events it used. It does **not** present a partial reconstruction as exact.
+
 ### Session review paging
 
 `GET /api/v1/sessions/:sessionId/review` returns **one page** of telemetry, not

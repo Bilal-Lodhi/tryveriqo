@@ -51,6 +51,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+* **The in-memory session projection grew without bound.** `SessionState.events`
+  and `keystrokeDeltas` were appended on every applied event and never trimmed, so
+  an authenticated candidate could grow one session's footprint indefinitely —
+  duplicate suppression does not help, because genuinely distinct observations are
+  exactly what grows them. The projection now retains the newest 1,000
+  observations, 2,000 keystroke deltas and 50 pasted contents, while
+  `eventsObserved`, `keystrokeObservations` and `pasteObservations` stay true
+  totals and every per-type counter keeps counting past the window. Pasted content
+  moved into its own window so trimming events cannot silently change what an
+  analysis is shown, and the operator summary reports totals and window sizes side
+  by side. Recovery from a truncated store page now sets `recoveredPartially`
+  instead of presenting a partial counter reconstruction as exact.
 * **Session review silently truncated the reviewer's evidence.**
   `get_session_review` returned at most the newest 500 events and said nothing
   about it, so a reviewer looking at a long session saw a partial timeline
