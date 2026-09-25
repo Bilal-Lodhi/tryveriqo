@@ -360,7 +360,11 @@ class _SessionTile extends StatelessWidget {
         style: theme.textTheme.bodyMedium,
       ),
       subtitle: Text(
-        '${session.status} · ${session.eventCount} events · ${session.pasteCount} pastes',
+        // The event total is the true stored count. When the per-type counts came
+        // from a page, say so rather than presenting sampled numbers as totals.
+        '${session.status} · ${session.eventCount} events · '
+        '${session.pasteCount} pastes'
+        '${session.countsSampled ? ' (from a sample)' : ''}',
         style: theme.textTheme.labelSmall,
         overflow: TextOverflow.ellipsis,
       ),

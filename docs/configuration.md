@@ -141,6 +141,41 @@ request. Exceeding it is a `400` naming the batch, not a silent truncation.
 ceiling, and a generation request reaches a paid model. The ceiling is the
 effective limit today; a tighter per-field bound would be a better one.
 
+### Session review paging
+
+`GET /api/v1/sessions/:sessionId/review` returns **one page** of telemetry, not
+necessarily the whole record, and always says which it is.
+
+| Query parameter | Default | Range |
+| --- | --- | --- |
+| `eventLimit` | `500` | 1–5000 |
+| `eventOffset` | `0` | ≥ 0 |
+
+Every response carries the disclosure, whatever the page size:
+
+| Field | Meaning |
+| --- | --- |
+| `timelineTotal` | True stored event count for the session |
+| `timelineReturned` | Events in `timeline` |
+| `timelineTruncated` | True when `timeline` is a page, not the whole record |
+| `nextEventOffset` | Pass as `eventOffset` for the next older page, or `null` when complete |
+
+Pages are newest-first at the store and re-ordered **ascending** in `timeline`, so
+a client loading older pages should prepend them. Walk `nextEventOffset` until it
+is `null` to read the whole record.
+
+A malformed `eventLimit` or `eventOffset` is a `400`, never a silent substitution
+— quietly choosing a different page size would make the disclosure above a lie.
+
+`GET /api/v1/sessions` reports the **true** `eventCount` per session. Its
+`pasteCount` and `tabSwitchCount` are derived from one page per session, because
+counting each type separately would add a query per type to a list that already
+fans out one call per session. When a session is longer than that page the summary
+sets `countsSampled: true`, so sampled counts are never presented as totals.
+
+The reviewer console shows a "Partial timeline" notice with the true total and a
+**Load older events** control whenever `timelineTruncated` is true.
+
 ### Candidate registration
 
 Registration is the only unauthenticated write in the API, so it is the one

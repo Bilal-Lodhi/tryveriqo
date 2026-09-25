@@ -286,6 +286,18 @@ export interface SessionReviewResponse {
   timeline: TimelineEntry[];
   integritySummary: IntegrityReport[];
   finalScore: number | null;
+  /**
+   * Telemetry paging disclosure.
+   *
+   * `timeline` carries at most one page of events, newest-first from the store
+   * and re-ordered ascending here. `timelineTotal` is the true stored count, so a
+   * caller can always tell whether what it received is the whole record.
+   */
+  timelineTotal: number;
+  timelineReturned: number;
+  timelineTruncated: boolean;
+  /** Pass as `?eventOffset=` to fetch the next older page, or null when complete. */
+  nextEventOffset: number | null;
 }
 
 export interface TimelineEntry {
@@ -301,11 +313,18 @@ export interface SessionSummary {
   candidateId: string;
   assessmentId: string;
   status: SessionStatus;
+  /** True stored event total, not the size of the page it was derived from. */
   eventCount: number;
   pasteCount: number;
   tabSwitchCount: number;
   integrityScore: number;
   lastEventTimestamp: string | null;
+  /**
+   * True when `pasteCount` and `tabSwitchCount` were derived from a page rather
+   * than the whole record, so the cohort list does not present sampled counts as
+   * complete ones.
+   */
+  countsSampled: boolean;
 }
 
 // ─── Identity ──────────────────────────────────────────────────────

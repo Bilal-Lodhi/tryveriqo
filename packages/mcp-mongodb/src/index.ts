@@ -17,6 +17,8 @@ export {
   createToolHandlers,
   dispatchTool,
   registeredToolNames,
+  REVIEW_EVENT_LIMIT_DEFAULT,
+  REVIEW_EVENT_LIMIT_MAX,
   TOOL_DEFINITIONS,
   TOOL_DEFINITIONS_BY_NAME,
   ToolArgumentError,

@@ -260,6 +260,10 @@ class SessionSummary {
   final double integrityScore;
   final String? lastEventTimestamp;
 
+  /// True when [pasteCount] and [tabSwitchCount] came from a page rather than the
+  /// whole record, so the list does not present sampled counts as totals.
+  final bool countsSampled;
+
   const SessionSummary({
     required this.sessionId,
     required this.candidateId,
@@ -270,6 +274,7 @@ class SessionSummary {
     required this.tabSwitchCount,
     required this.integrityScore,
     this.lastEventTimestamp,
+    this.countsSampled = false,
   });
 
   factory SessionSummary.fromJson(Map<String, dynamic> json) {
@@ -283,6 +288,7 @@ class SessionSummary {
       tabSwitchCount: (json['tabSwitchCount'] as num?)?.toInt() ?? 0,
       integrityScore: (json['integrityScore'] as num?)?.toDouble() ?? 0.0,
       lastEventTimestamp: parseTimestamp(json['lastEventTimestamp']),
+      countsSampled: json['countsSampled'] as bool? ?? false,
     );
   }
 }
@@ -298,6 +304,18 @@ class ReviewRecord {
   final List<IntegrityReport> integritySummary;
   final double? finalScore;
 
+  /// True stored event total for this session.
+  final int timelineTotal;
+
+  /// Events held in [timeline].
+  final int timelineReturned;
+
+  /// True when [timeline] is a page rather than the whole record.
+  final bool timelineTruncated;
+
+  /// Pass as `eventOffset` to fetch the next older page, or null when complete.
+  final int? nextEventOffset;
+
   const ReviewRecord({
     required this.sessionId,
     required this.candidateId,
@@ -307,22 +325,59 @@ class ReviewRecord {
     required this.timeline,
     required this.integritySummary,
     this.finalScore,
+    this.timelineTotal = 0,
+    this.timelineReturned = 0,
+    this.timelineTruncated = false,
+    this.nextEventOffset,
   });
 
   factory ReviewRecord.fromJson(Map<String, dynamic> json) {
+    final timeline = (json['timeline'] as List<dynamic>? ?? [])
+        .map((e) => TimelineEntry.fromJson(e as Map<String, dynamic>))
+        .toList();
+    final total = (json['timelineTotal'] as num?)?.toInt();
+    final returned = (json['timelineReturned'] as num?)?.toInt();
+
     return ReviewRecord(
       sessionId: json['sessionId'] as String? ?? '',
       candidateId: json['candidateId'] as String? ?? '',
       assessmentId: json['assessmentId'] as String? ?? '',
       status: json['status'] as String? ?? 'unknown',
       codeSubmission: json['submittedCode'] as String? ?? '',
-      timeline: (json['timeline'] as List<dynamic>? ?? [])
-          .map((e) => TimelineEntry.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      timeline: timeline,
       integritySummary: (json['integritySummary'] as List<dynamic>? ?? [])
           .map((e) => IntegrityReport.fromJson(e as Map<String, dynamic>))
           .toList(),
       finalScore: (json['finalScore'] as num?)?.toDouble(),
+      // Fall back to what is held, so an older API that omits the disclosure
+      // cannot make a partial timeline look complete.
+      timelineTotal: total ?? returned ?? timeline.length,
+      timelineReturned: returned ?? timeline.length,
+      timelineTruncated: json['timelineTruncated'] as bool? ?? false,
+      nextEventOffset: (json['nextEventOffset'] as num?)?.toInt(),
+    );
+  }
+
+  /// True when older telemetry exists that this record does not hold.
+  bool get hasOlderEvents => timelineTruncated && nextEventOffset != null;
+
+  /// A copy carrying a larger, still-ascending timeline.
+  ReviewRecord withOlderEvents(List<TimelineEntry> older) {
+    return ReviewRecord(
+      sessionId: sessionId,
+      candidateId: candidateId,
+      assessmentId: assessmentId,
+      status: status,
+      codeSubmission: codeSubmission,
+      // Older events precede what is already held, because the timeline is
+      // rendered oldest-first and each page arrives newest-first.
+      timeline: [...older, ...timeline],
+      integritySummary: integritySummary,
+      finalScore: finalScore,
+      timelineTotal: timelineTotal,
+      timelineReturned: timelineReturned + older.length,
+      timelineTruncated: false,
+      nextEventOffset: null,
     );
   }
 

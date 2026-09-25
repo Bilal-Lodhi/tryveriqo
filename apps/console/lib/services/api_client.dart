@@ -238,12 +238,26 @@ class ApiService {
   }
 
   /// `GET /api/v1/sessions/:sessionId/review` — full review payload.
-  Future<ReviewRecord> fetchReview(String sessionId) async {
+  ///
+  /// The response carries one page of telemetry, not necessarily the whole
+  /// record. [eventOffset] walks backwards through it; the payload reports
+  /// `timelineTotal` and `nextEventOffset` so the caller can tell whether it
+  /// holds everything.
+  Future<ReviewRecord> fetchReview(
+    String sessionId, {
+    int? eventLimit,
+    int? eventOffset,
+  }) async {
+    final query = <String, String>{
+      if (eventLimit != null) 'eventLimit': '$eventLimit',
+      if (eventOffset != null) 'eventOffset': '$eventOffset',
+    };
+    final uri = Uri.parse(
+      '$baseUrl/api/v1/sessions/$sessionId/review',
+    ).replace(queryParameters: query.isEmpty ? null : query);
+
     final response = await _client
-        .get(
-          Uri.parse('$baseUrl/api/v1/sessions/$sessionId/review'),
-          headers: _commonHeaders(),
-        )
+        .get(uri, headers: _commonHeaders())
         .timeout(const Duration(seconds: 15));
     if (response.statusCode != 200) {
       throw ApiException(

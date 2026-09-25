@@ -51,6 +51,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+* **Session review silently truncated the reviewer's evidence.**
+  `get_session_review` returned at most the newest 500 events and said nothing
+  about it, so a reviewer looking at a long session saw a partial timeline
+  presented as the whole record — the oldest events simply absent — and the cohort
+  list's `eventCount` undercounted. The tool now reports the true `eventTotal`
+  from a count, the page it returned, an `eventsTruncated` flag and a
+  `nextEventOffset`; the review endpoint accepts `eventLimit`/`eventOffset` and
+  forwards the disclosure as `timelineTotal`, `timelineReturned`,
+  `timelineTruncated` and `nextEventOffset`; the cohort list reports the true total
+  and marks per-type counts `countsSampled` when they come from a page; and the
+  console shows a "Partial timeline" notice with the true total and a **Load older
+  events** control. A malformed page parameter is a `400` rather than a silent
+  substitution.
 * **The console reported a cancelled or unsaved generation as a success, and
   claimed it had been persisted.** The generate panel read only the happy path out
   of the response and told the operator "The suite was persisted for issue to

@@ -55,6 +55,40 @@ function requireObjectArray(args: ToolArguments, key: string): Record<string, un
   return value as Record<string, unknown>[];
 }
 
+/**
+ * Reads an optional integer argument, clamped into `[min, max]`.
+ *
+ * A malformed value is a client error rather than a silent fallback: quietly
+ * substituting a default for `eventLimit: "lots"` would hand the caller a page
+ * size it did not ask for while implying it got one it did.
+ */
+function optionalInt(
+  args: ToolArguments,
+  key: string,
+  bounds: { min: number; max: number; fallback: number },
+): number {
+  const value = args[key];
+  if (value === undefined || value === null) return bounds.fallback;
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new ToolArgumentError(`Parameter '${key}' must be an integer.`);
+  }
+  if (value < bounds.min || value > bounds.max) {
+    throw new ToolArgumentError(
+      `Parameter '${key}' must be between ${bounds.min} and ${bounds.max}.`,
+    );
+  }
+  return value;
+}
+
+/**
+ * Default and maximum page size for a session's telemetry timeline.
+ *
+ * The default matches the store's own limit. The maximum exists so a reviewer can
+ * page further back without a single call returning an unbounded timeline.
+ */
+export const REVIEW_EVENT_LIMIT_DEFAULT = 500;
+export const REVIEW_EVENT_LIMIT_MAX = 5000;
+
 // ─── Tool metadata ─────────────────────────────────────────────────
 
 export const TOOL_DEFINITIONS: readonly ToolDefinition[] = Object.freeze([
@@ -157,10 +191,20 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = Object.freeze([
   {
     name: MCP_TOOLS.GET_SESSION_REVIEW,
     description:
-      "Fetch everything a reviewer needs for one session: the session record, its telemetry events and its integrity reports.",
+      "Fetch everything a reviewer needs for one session: the session record, a page of its telemetry events (newest first) and its integrity reports. The response reports eventTotal alongside the page it returned, so a caller can tell a partial timeline from a complete one.",
     inputSchema: {
       type: "object",
-      properties: { sessionId: { type: "string" } },
+      properties: {
+        sessionId: { type: "string" },
+        eventLimit: {
+          type: "number",
+          description: `Events to return, 1-${REVIEW_EVENT_LIMIT_MAX}. Default ${REVIEW_EVENT_LIMIT_DEFAULT}.`,
+        },
+        eventOffset: {
+          type: "number",
+          description: "Events to skip from the newest end. Default 0.",
+        },
+      },
       required: ["sessionId"],
     },
   },
@@ -256,12 +300,41 @@ export function createToolHandlers(store: MongoStore): ToolHandlerTable {
 
     async [MCP_TOOLS.GET_SESSION_REVIEW](args) {
       const sessionId = requireString(args, "sessionId");
-      const [session, events, integrityReports] = await Promise.all([
+      const limit = optionalInt(args, "eventLimit", {
+        min: 1,
+        max: REVIEW_EVENT_LIMIT_MAX,
+        fallback: REVIEW_EVENT_LIMIT_DEFAULT,
+      });
+      const offset = optionalInt(args, "eventOffset", {
+        min: 0,
+        max: Number.MAX_SAFE_INTEGER,
+        fallback: 0,
+      });
+
+      const [session, events, integrityReports, eventTotal] = await Promise.all([
         store.getSession(sessionId),
-        store.getSessionEvents(sessionId),
+        store.getSessionEvents(sessionId, { limit, skip: offset }),
         store.getIntegrityReports(sessionId),
+        store.countSessionEvents(sessionId),
       ]);
-      return { success: true, session, events, integrityReports };
+
+      // The page is newest-first, so a reviewer who is shown only this page is
+      // missing the OLDEST events. Reporting the true total and where the next
+      // page starts is what stops a partial timeline from reading as a complete
+      // one.
+      const eventsReturned = events.length;
+      const consumed = offset + eventsReturned;
+
+      return {
+        success: true,
+        session,
+        events,
+        integrityReports,
+        eventTotal,
+        eventsReturned,
+        eventsTruncated: consumed < eventTotal,
+        nextEventOffset: consumed < eventTotal ? consumed : null,
+      };
     },
 
     async [MCP_TOOLS.GET_CANDIDATE_REPORT](args) {
