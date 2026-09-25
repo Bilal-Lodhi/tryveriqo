@@ -99,6 +99,17 @@ Checklist: [docs/release/checklist-v0.2.0.md](docs/release/checklist-v0.2.0.md).
 
 ### Fixed
 
+* **`config.database.uri` was parsed and never read by the API.** The API does not
+  connect to MongoDB — it reaches the datastore through the MCP tool surface, and
+  the **MCP process** owns the connection and reads `MONGODB_URI` from its own
+  environment. The API's copy of the connection string was therefore dead config: a
+  setting that looked configurable and was not. It has been removed rather than made
+  "used", because having the API open its own connection would be an architectural
+  change, not a config fix; `databaseName` remains because `/health` reports it.
+  `MONGODB_URI` is still read by the MCP process and is now documented as such. A
+  new `apps/api/test/config-census.test.ts` enumerates every field `loadConfig()`
+  produces and fails if any of them is read by nothing — the third occurrence of
+  this defect class, after `SESSION_TTL_SECONDS` and `PLAGIARISM_THRESHOLD`.
 * **The similarity report compared against nothing.** `analyzeIntegrity` took a
   `referenceCompletions` argument and the ingest route passed an empty array, so
   "similarity" meant similarity to nothing — a check that read as happening and

@@ -32,8 +32,21 @@ export interface AiProviderConfig {
   requestTimeoutMs: number;
 }
 
+/**
+ * The API's database settings.
+ *
+ * Deliberately narrow. The API does **not** connect to MongoDB — it reaches the
+ * datastore through the MCP tool surface, and the MCP process owns the connection
+ * and reads `MONGODB_URI` from its own environment. There is therefore no
+ * connection string here: `databaseName` exists only so `GET /health` can report
+ * which database the tool surface is using.
+ *
+ * A `uri` field used to live here, parsed from `MONGODB_URI` and read by nothing.
+ * It was removed rather than made "used", because making the API open its own
+ * connection would be an architectural change, not a config fix.
+ */
 export interface DatabaseConfig {
-  uri: string;
+  /** Reported by `/health` for operator orientation. Not used to connect. */
   databaseName: string;
 }
 
@@ -237,7 +250,8 @@ export function loadConfig(): AppConfig {
       requestTimeoutMs: readInt("AI_REQUEST_TIMEOUT_MS", 90_000),
     },
     database: {
-      uri: readString("MONGODB_URI", "mongodb://127.0.0.1:27017") || "mongodb://127.0.0.1:27017",
+      // No connection string: the MCP process owns the MongoDB connection and
+      // reads MONGODB_URI itself. See `DatabaseConfig`.
       databaseName: readString("MONGODB_DATABASE", "assessment") || "assessment",
     },
     mcp: {
