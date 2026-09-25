@@ -1,6 +1,6 @@
 {
   "name": "@assessment/api",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "tryveriqo API — assessment generation, candidate sessions, telemetry ingestion and reviewer timelines",
   "license": "Apache-2.0",
@@ -15,7 +15,7 @@
     "test": "node --test --import tsx test/*.test.ts"
   },
   "dependencies": {
-    "@assessment/mcp-mongodb": "0.1.0",
+    "@assessment/mcp-mongodb": "0.2.0",
     "@google/genai": "^2.7.0",
     "@hono/node-server": "^1.13.7",
     "dotenv": "^16.6.1",

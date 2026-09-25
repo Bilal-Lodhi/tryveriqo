@@ -14,7 +14,7 @@ import {
 
 export type Environment = "development" | "test" | "production";
 
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = "0.2.0";
 export const SERVICE_NAME = "tryveriqo-api";
 
 export interface AiProviderConfig {

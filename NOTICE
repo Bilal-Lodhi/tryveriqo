@@ -58,11 +58,13 @@ licences are:
   cupertino_icons (Dart)                MIT
 
 -------------------------------------------------------------------------------
-TRANSITIVE INVENTORY (v0.1.0)
+TRANSITIVE INVENTORY
 -------------------------------------------------------------------------------
 
-The complete resolved dependency closure was audited, not only the direct
-dependencies above.
+First audited for v0.1.0 and re-checked for the prepared v0.2.0 candidate. The
+resolved dependency graph is unchanged between the two: v0.2.0 changed version
+fields only, and `package-lock.json` was edited rather than regenerated precisely
+so the closure below stays the closure that ships.
 
 Node runtime closure — 156 packages, resolved from `package-lock.json`:
 
