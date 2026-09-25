@@ -250,6 +250,181 @@ void main() {
     });
   });
 
+  group('review timeline paging', () {
+    Map<String, dynamic> reviewJson({
+      required int returned,
+      required int total,
+      required bool truncated,
+      int? nextOffset,
+      int startSecond = 0,
+    }) => {
+      'sessionId': 'session-1',
+      'candidateId': 'candidate-1',
+      'assessmentId': 'assessment-1',
+      'status': 'in_progress',
+      'submittedCode': '',
+      'timeline': List.generate(
+        returned,
+        (index) => {
+          'timestamp':
+              '2026-01-01T00:00:${(startSecond + index).toString().padLeft(2, '0')}.000Z',
+          'eventType': 'KEYSTROKE',
+          'label': 'Keystroke',
+          'severity': 'info',
+          'detail': 'event ${startSecond + index}',
+        },
+      ),
+      'integritySummary': <dynamic>[],
+      'timelineTotal': total,
+      'timelineReturned': returned,
+      'timelineTruncated': truncated,
+      'nextEventOffset': nextOffset,
+    };
+
+    test('a complete timeline reports no truncation', () {
+      final record = ReviewRecord.fromJson(
+        reviewJson(returned: 5, total: 5, truncated: false),
+      );
+
+      expect(record.timelineTruncated, isFalse);
+      expect(record.hasOlderEvents, isFalse);
+      expect(record.nextEventOffset, isNull);
+      expect(record.timelineTotal, 5);
+    });
+
+    test('a partial timeline is disclosed with the true total', () {
+      // The defect this replaced: 500 events arrived with no indication that
+      // more existed, so a partial timeline read as the whole record.
+      final record = ReviewRecord.fromJson(
+        reviewJson(
+          returned: 500,
+          total: 1200,
+          truncated: true,
+          nextOffset: 500,
+        ),
+      );
+
+      expect(record.timelineTruncated, isTrue);
+      expect(record.hasOlderEvents, isTrue);
+      expect(record.timelineTotal, 1200);
+      expect(record.timelineReturned, 500);
+      expect(record.nextEventOffset, 500);
+    });
+
+    test('a response omitting the disclosure falls back to what it holds', () {
+      // An older API cannot make a partial timeline look complete, because the
+      // fallback is the loaded length rather than a claim of completeness.
+      final record = ReviewRecord.fromJson({
+        'sessionId': 'session-1',
+        'candidateId': 'candidate-1',
+        'assessmentId': 'assessment-1',
+        'status': 'in_progress',
+        'submittedCode': '',
+        'timeline': [
+          {
+            'timestamp': '2026-01-01T00:00:00.000Z',
+            'eventType': 'KEYSTROKE',
+            'label': 'Keystroke',
+            'severity': 'info',
+            'detail': '',
+          },
+        ],
+        'integritySummary': <dynamic>[],
+      });
+
+      expect(record.timelineTotal, 1);
+      expect(record.timelineReturned, 1);
+      expect(record.timelineTruncated, isFalse);
+      expect(record.hasOlderEvents, isFalse);
+    });
+
+    test('older events are prepended, keeping the timeline ascending', () {
+      // The held page is the NEWEST two events (seconds 2 and 3); the page loaded
+      // next is older (seconds 0 and 1), so it belongs at the front.
+      final current = ReviewRecord.fromJson(
+        reviewJson(
+          returned: 2,
+          total: 4,
+          truncated: true,
+          nextOffset: 2,
+          startSecond: 2,
+        ),
+      );
+      const older = [
+        TimelineEntry(
+          timestamp: '2026-01-01T00:00:00.000Z',
+          eventType: 'KEYSTROKE',
+          label: 'Keystroke',
+          severity: 'info',
+          detail: 'older 0',
+        ),
+        TimelineEntry(
+          timestamp: '2026-01-01T00:00:01.000Z',
+          eventType: 'KEYSTROKE',
+          label: 'Keystroke',
+          severity: 'info',
+          detail: 'older 1',
+        ),
+      ];
+
+      final merged = current.withOlderEvents(older);
+
+      expect(merged.timeline.length, 4);
+      expect(merged.timeline.first.detail, 'older 0');
+      expect(merged.timeline.last.detail, 'event 3');
+      expect(merged.timelineReturned, 4);
+      // Nothing older remains, so the notice must disappear.
+      expect(merged.timelineTruncated, isFalse);
+      expect(merged.hasOlderEvents, isFalse);
+
+      final timestamps = merged.timeline
+          .map((entry) => entry.timestamp)
+          .toList();
+      final sorted = [...timestamps]..sort();
+      expect(
+        timestamps,
+        sorted,
+        reason: 'the merged timeline must stay ascending',
+      );
+    });
+
+    test('a session summary reports sampled counts', () {
+      final summary = SessionSummary.fromJson({
+        'sessionId': 'session-1',
+        'candidateId': 'candidate-1',
+        'assessmentId': 'assessment-1',
+        'status': 'in_progress',
+        'eventCount': 1200,
+        'pasteCount': 3,
+        'tabSwitchCount': 1,
+        'integrityScore': 10,
+        'countsSampled': true,
+      });
+
+      expect(
+        summary.eventCount,
+        1200,
+        reason: 'the true total, not the page size',
+      );
+      expect(summary.countsSampled, isTrue);
+    });
+
+    test('a short session summary is not marked sampled', () {
+      final summary = SessionSummary.fromJson({
+        'sessionId': 'session-1',
+        'candidateId': 'candidate-1',
+        'assessmentId': 'assessment-1',
+        'status': 'in_progress',
+        'eventCount': 4,
+        'pasteCount': 1,
+        'tabSwitchCount': 0,
+        'integrityScore': 0,
+      });
+
+      expect(summary.countsSampled, isFalse);
+    });
+  });
+
   group('integrity model', () {
     test('parses a structured report', () {
       final report = IntegrityReport.fromJson({

@@ -174,13 +174,33 @@ export interface SessionReviewData {
     payload?: Record<string, unknown>;
   }>;
   integrityReports: Array<Record<string, unknown>>;
+  /** Total telemetry events stored for the session, regardless of paging. */
+  eventTotal?: number;
+  /** Events actually returned in this page. */
+  eventsReturned?: number;
+  /** True when the returned page is not the whole record. */
+  eventsTruncated?: boolean;
+  /** Offset to pass as `eventOffset` to fetch the next older page, or null. */
+  nextEventOffset?: number | null;
+}
+
+export interface SessionReviewOptions {
+  /** Events to return. Bounded by the tool surface. */
+  eventLimit?: number;
+  /** Events to skip from the newest end. */
+  eventOffset?: number;
 }
 
 export async function fetchSessionReview(
   mcp: McpClient,
   sessionId: string,
+  options: SessionReviewOptions = {},
 ): Promise<McpCallResult<SessionReviewData>> {
-  return mcp.call<SessionReviewData>(MCP_TOOLS.GET_SESSION_REVIEW, { sessionId });
+  return mcp.call<SessionReviewData>(MCP_TOOLS.GET_SESSION_REVIEW, {
+    sessionId,
+    ...(options.eventLimit === undefined ? {} : { eventLimit: options.eventLimit }),
+    ...(options.eventOffset === undefined ? {} : { eventOffset: options.eventOffset }),
+  });
 }
 
 export async function listSessions(

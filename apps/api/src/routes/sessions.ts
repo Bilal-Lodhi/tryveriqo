@@ -24,9 +24,30 @@ import {
   type AppEnv,
 } from "../middleware/auth.js";
 import { fetchSessionReview, listSessions, type SessionReviewData } from "../mcp-client.js";
+import { REVIEW_EVENT_LIMIT_MAX } from "@assessment/mcp-mongodb";
 import { finiteScore, isUsableScore, selectLatestReport } from "../integrity-report.js";
 import { nowIso } from "../utils/time.js";
 import type { ApiDependencies } from "./dependencies.js";
+
+/**
+ * Reads an optional bounded integer from the query string.
+ *
+ * Returns `undefined` when absent, `"invalid"` when present but unusable. A
+ * malformed value is an error rather than a silent default: substituting a page
+ * size the caller did not ask for would make the disclosure below a lie.
+ */
+function readBoundedIntQuery(
+  c: Context<AppEnv>,
+  name: string,
+  bounds: { min: number; max: number },
+): number | undefined | "invalid" {
+  const raw = c.req.query(name);
+  if (raw === undefined || raw === "") return undefined;
+  if (!/^\d+$/.test(raw)) return "invalid";
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < bounds.min || parsed > bounds.max) return "invalid";
+  return parsed;
+}
 
 export function sessionRoutes(deps: ApiDependencies): Hono<AppEnv> {
   const router = new Hono<AppEnv>();
@@ -65,7 +86,9 @@ export function sessionRoutes(deps: ApiDependencies): Hono<AppEnv> {
   const candidateOwnedBy = async (c: Context<AppEnv>): Promise<string | null> => {
     const sessionId = c.req.param("sessionId");
     if (!sessionId) return null;
-    const review = await fetchSessionReview(mcp, sessionId);
+    // Ownership needs only the session record, so ask for the smallest possible
+    // page rather than pulling a full timeline just to read one field.
+    const review = await fetchSessionReview(mcp, sessionId, { eventLimit: 1 });
     return review.data?.session?.candidateId ?? null;
   };
 
@@ -77,7 +100,36 @@ export function sessionRoutes(deps: ApiDependencies): Hono<AppEnv> {
       const sessionId = c.req.param("sessionId");
       const requestId = c.get("correlationId") ?? crypto.randomUUID();
 
-      const review = await fetchSessionReview(mcp, sessionId);
+      // Paging is validated before the store is touched, so a malformed request
+      // is a 400 rather than a silently different page size.
+      const eventLimit = readBoundedIntQuery(c, "eventLimit", {
+        min: 1,
+        max: REVIEW_EVENT_LIMIT_MAX,
+      });
+      if (eventLimit === "invalid") {
+        return c.json(
+          {
+            success: false,
+            error: `Query parameter 'eventLimit' must be an integer between 1 and ${REVIEW_EVENT_LIMIT_MAX}.`,
+          },
+          400,
+        );
+      }
+      const eventOffset = readBoundedIntQuery(c, "eventOffset", {
+        min: 0,
+        max: Number.MAX_SAFE_INTEGER,
+      });
+      if (eventOffset === "invalid") {
+        return c.json(
+          { success: false, error: "Query parameter 'eventOffset' must be a non-negative integer." },
+          400,
+        );
+      }
+
+      const review = await fetchSessionReview(mcp, sessionId, {
+        ...(eventLimit === undefined ? {} : { eventLimit }),
+        ...(eventOffset === undefined ? {} : { eventOffset }),
+      });
       if (!review.ok) {
         log(`[sessions] [${requestId}] Review unavailable: ${review.error ?? "unknown"}`);
         return c.json({ success: false, error: "The assessment store is unavailable." }, 502);
@@ -94,6 +146,15 @@ export function sessionRoutes(deps: ApiDependencies): Hono<AppEnv> {
       const timeline = events.map(toTimelineEntry).sort(
         (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
       );
+
+      // A reviewer must never be shown a partial timeline as though it were the
+      // whole one. `timelineTotal` comes from the store's own count, not from the
+      // length of the page, so this cannot silently drift.
+      const timelineReturned = data.eventsReturned ?? events.length;
+      const timelineTotal = data.eventTotal ?? timelineReturned;
+      const timelineTruncated = data.eventsTruncated ?? timelineTotal > timelineReturned;
+      const nextEventOffset =
+        data.nextEventOffset ?? (timelineTruncated ? timelineReturned : null);
 
       const integritySummary = reports.map((report) => toIntegrityReport(report, data));
       // Select by newest `generatedAt`, never by array position: the store
@@ -122,6 +183,10 @@ export function sessionRoutes(deps: ApiDependencies): Hono<AppEnv> {
           hasSubmission && latest && scoreUsable
             ? Math.max(0, 100 - latest.overallScore)
             : null,
+        timelineTotal,
+        timelineReturned,
+        timelineTruncated,
+        nextEventOffset,
       };
 
       return c.json({ success: true, data: response });
@@ -157,6 +222,15 @@ function summarise(
 
   const latestScore = finiteScore(selectLatestReport(reports)?.["overallScore"]);
 
+  // The cohort list samples one page per session, so the counts below are
+  // derived from a page whenever the session is longer than that page.
+  // `eventCount` uses the store's true total; the per-type counts cannot, because
+  // counting each type separately would add a query per type per session to a
+  // list that already fans out one call per session. They are disclosed as
+  // sampled instead of being presented as totals.
+  const eventCount = review?.eventTotal ?? events.length;
+  const countsSampled = review?.eventsTruncated ?? eventCount > events.length;
+
   return {
     sessionId: session.sessionId,
     candidateId: session.candidateId,
@@ -167,13 +241,14 @@ function summarise(
       null,
       alertThreshold,
     ),
-    eventCount: events.length,
+    eventCount,
     pasteCount: events.filter((event) => event.eventType === "PASTE_TRIGGER").length,
     tabSwitchCount: events.filter(
       (event) => event.eventType === "TAB_SWITCH" || event.eventType === "WINDOW_BLUR",
     ).length,
     integrityScore: latestScore,
     lastEventTimestamp,
+    countsSampled,
   };
 }
 

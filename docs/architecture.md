@@ -214,6 +214,32 @@ misreading the review surface exists to avoid.
 The console applies the same rule in `ReviewRecord.latestReport`, so the flags and
 plagiarism panel cannot disagree with the score header.
 
+### Evidence completeness in review
+
+`get_session_review` returns at most one page of telemetry, and the store's
+`getSessionEvents` sorts newest-first. A reviewer shown a page without being told
+it is a page is looking at partial evidence that reads as the whole record — the
+oldest events, often where an assessment starts, simply absent.
+
+The tool therefore reports the page **and** its completeness: `eventTotal` from
+`countSessionEvents`, `eventsReturned`, `eventsTruncated`, and `nextEventOffset`
+for the next older page. The API re-orders the page ascending for display and
+forwards the disclosure as `timelineTotal`, `timelineReturned`,
+`timelineTruncated` and `nextEventOffset`.
+
+Three consequences worth stating:
+
+* **The true total comes from a count, not from the page length.** Deriving it
+  from the returned array would reproduce the original defect.
+* **The cohort list marks sampled counts.** `eventCount` is the true total, but
+  `pasteCount` and `tabSwitchCount` are derived from one page, so the summary sets
+  `countsSampled` when the session is longer than that page. Counting each type
+  separately would add a query per type per session to a list that already fans
+  out one call per session.
+* **The console prepends, and discloses.** The timeline renders oldest-first
+  while pages arrive newest-first, so older events belong at the front; a "Partial
+  timeline" notice states how many of how many are loaded and offers the next page.
+
 ## Integrity engine
 
 `apps/api/src/integrity-session.ts` is pure state manipulation — no network, no

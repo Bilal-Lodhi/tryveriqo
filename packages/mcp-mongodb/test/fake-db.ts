@@ -123,6 +123,10 @@ export function createFakeDb(): FakeDb {
           results = sortBy(results, spec);
           return chain;
         },
+        skip(count: number) {
+          results = results.slice(count);
+          return chain;
+        },
         limit(count: number) {
           results = results.slice(0, count);
           return chain;

@@ -204,6 +204,77 @@ if (reviewData) {
     reviewData.timeline.length === observations.length,
     `${reviewData.timeline.length} entries from ${batch.length} sent`,
   );
+
+  // ── Truncation disclosure ────────────────────────────────────────────────
+  // A reviewer must never be shown a page of evidence as though it were the whole
+  // record. Ask for a page smaller than the session and check that the response
+  // says so, and that the continuation offset actually continues.
+  step(
+    'a complete timeline is not reported as truncated',
+    reviewData.timelineTotal === observations.length &&
+      reviewData.timelineReturned === observations.length &&
+      reviewData.timelineTruncated === false &&
+      reviewData.nextEventOffset === null,
+    `total=${reviewData.timelineTotal} returned=${reviewData.timelineReturned} ` +
+      `truncated=${reviewData.timelineTruncated} next=${reviewData.nextEventOffset}`,
+  );
+
+  const paged = await request(`/api/v1/sessions/${sessionId}/review?eventLimit=2`);
+  const pagedData = paged.payload?.data;
+  step(
+    'a truncated timeline reports the true total and a continuation',
+    paged.status === 200 &&
+      pagedData?.timelineReturned === 2 &&
+      pagedData?.timelineTotal === observations.length &&
+      pagedData?.timelineTruncated === true &&
+      pagedData?.nextEventOffset === 2,
+    `status=${paged.status} returned=${pagedData?.timelineReturned} ` +
+      `total=${pagedData?.timelineTotal} truncated=${pagedData?.timelineTruncated} ` +
+      `next=${pagedData?.nextEventOffset}`,
+  );
+
+  // Walk the continuation until it stops, and check the pages reconstruct the
+  // record exactly once. This is the property that matters: a reviewer can always
+  // reach the whole timeline, and never sees an event twice.
+  const seenTimestamps = [];
+  let offset = 0;
+  let pageCount = 0;
+  let terminated = false;
+
+  while (!terminated && pageCount < 20) {
+    const page = await request(
+      `/api/v1/sessions/${sessionId}/review?eventLimit=2&eventOffset=${offset}`,
+    );
+    const pageData = page.payload?.data;
+    if (page.status !== 200 || !pageData) break;
+
+    for (const entry of pageData.timeline) seenTimestamps.push(entry.timestamp);
+    pageCount += 1;
+
+    if (pageData.nextEventOffset === null) {
+      terminated = true;
+      break;
+    }
+    offset = pageData.nextEventOffset;
+  }
+
+  step(
+    'walking the continuation reconstructs the record exactly once',
+    terminated &&
+      pageCount === Math.ceil(observations.length / 2) &&
+      seenTimestamps.length === observations.length &&
+      new Set(seenTimestamps).size === observations.length,
+    `pages=${pageCount} seen=${seenTimestamps.length} unique=${new Set(seenTimestamps).size} ` +
+      `terminated=${terminated}`,
+  );
+
+  const badPage = await request(`/api/v1/sessions/${sessionId}/review?eventLimit=nope`);
+  step(
+    'a malformed page parameter is refused rather than substituted',
+    badPage.status === 400,
+    `status ${badPage.status}`,
+  );
+
   step(
     'telemetry severities are classified',
     reviewData.timeline.some((entry) => entry.severity === 'critical'),

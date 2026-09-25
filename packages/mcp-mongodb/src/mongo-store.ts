@@ -234,9 +234,17 @@ export class MongoStore {
     return result.insertedCount;
   }
 
+  /**
+   * One page of a session's telemetry, newest first.
+   *
+   * The default limit exists so a single query cannot return an unbounded
+   * timeline, but a caller must not mistake a page for the whole record — hence
+   * `countSessionEvents`, which lets the tool report the true total alongside the
+   * page it actually returned.
+   */
   async getSessionEvents(
     sessionId: string,
-    options?: { limit?: number; eventType?: string },
+    options?: { limit?: number; skip?: number; eventType?: string },
   ): Promise<Document[]> {
     const query: Document = { sessionId };
     if (options?.eventType) {
@@ -245,8 +253,14 @@ export class MongoStore {
     return this.collection("microEvents")
       .find(query)
       .sort({ timestamp: -1 })
+      .skip(Math.max(0, options?.skip ?? 0))
       .limit(options?.limit ?? 500)
       .toArray();
+  }
+
+  /** Total telemetry events stored for a session, regardless of any page limit. */
+  async countSessionEvents(sessionId: string): Promise<number> {
+    return this.collection("microEvents").countDocuments({ sessionId });
   }
 
   async countEventType(sessionId: string, eventType: string): Promise<number> {

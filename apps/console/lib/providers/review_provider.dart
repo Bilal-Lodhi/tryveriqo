@@ -13,6 +13,7 @@ class ReviewProvider extends ChangeNotifier {
   ReviewRecord? _selected;
   String? _error;
   bool _isLoading = false;
+  bool _isLoadingOlder = false;
 
   ReviewProvider(this._api);
 
@@ -20,6 +21,7 @@ class ReviewProvider extends ChangeNotifier {
   ReviewRecord? get selected => _selected;
   String? get error => _error;
   bool get isLoading => _isLoading;
+  bool get isLoadingOlder => _isLoadingOlder;
 
   Future<void> loadSessions() async {
     _isLoading = true;
@@ -53,6 +55,49 @@ class ReviewProvider extends ChangeNotifier {
       _error = 'Failed to load review: $e';
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Fetches the next older page of telemetry and prepends it.
+  ///
+  /// The timeline is rendered oldest-first while each page arrives newest-first,
+  /// so older events belong at the front. Deduplicated on the way in, because a
+  /// live session can gain events between pages and shift the offset.
+  Future<void> loadOlderEvents() async {
+    final current = _selected;
+    final offset = current?.nextEventOffset;
+    if (current == null || offset == null) return;
+
+    _isLoadingOlder = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final page = await _api.fetchReview(
+        current.sessionId,
+        eventOffset: offset,
+      );
+      final seen = current.timeline
+          .map(
+            (entry) => '${entry.timestamp}|${entry.eventType}|${entry.detail}',
+          )
+          .toSet();
+      final older = page.timeline
+          .where(
+            (entry) => seen.add(
+              '${entry.timestamp}|${entry.eventType}|${entry.detail}',
+            ),
+          )
+          .toList();
+
+      _selected = current.withOlderEvents(older);
+    } on ApiException catch (e) {
+      _error = e.message;
+    } catch (e) {
+      _error = 'Failed to load older events: $e';
+    } finally {
+      _isLoadingOlder = false;
       notifyListeners();
     }
   }

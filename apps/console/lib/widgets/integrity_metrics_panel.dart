@@ -17,7 +17,8 @@ class IntegrityMetricsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final review = context.watch<ReviewProvider>().selected;
+    final provider = context.watch<ReviewProvider>();
+    final review = provider.selected;
     if (review == null) return _emptyState(context);
 
     return Column(
@@ -26,6 +27,8 @@ class IntegrityMetricsPanel extends StatelessWidget {
         if (review.latestReport != null)
           _ScoreHeader(report: review.latestReport!),
         const Divider(height: 1),
+        if (review.timelineTruncated)
+          _truncationNotice(context, provider, review),
         Expanded(
           child: review.timeline.isEmpty
               ? _noEvents(context)
@@ -50,6 +53,71 @@ class IntegrityMetricsPanel extends StatelessWidget {
                 ),
         ),
       ],
+    );
+  }
+
+  /// States plainly that the timeline is a page, and offers the next one.
+  ///
+  /// A reviewer deciding whether evidence supports a conclusion has to know when
+  /// they are looking at part of the record. The count comes from the API's true
+  /// total, not from what happens to be loaded.
+  Widget _truncationNotice(
+    BuildContext context,
+    ReviewProvider provider,
+    ReviewRecord review,
+  ) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final held = review.timeline.length;
+
+    return Container(
+      width: double.infinity,
+      color: scheme.tertiaryContainer,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.warning_amber_outlined,
+                size: 18,
+                color: scheme.onTertiaryContainer,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Partial timeline: showing $held of ${review.timelineTotal} '
+                  'recorded events, newest first. Older events are not loaded.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onTertiaryContainer,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: provider.isLoadingOlder
+                  ? null
+                  : () => provider.loadOlderEvents(),
+              icon: provider.isLoadingOlder
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.history, size: 16),
+              label: Text(
+                provider.isLoadingOlder ? 'Loading…' : 'Load older events',
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
