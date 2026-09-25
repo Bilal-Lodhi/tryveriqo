@@ -64,6 +64,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+* **The Vertex AI transport has been exercised live, and the result is recorded.**
+  A real call against a Google Cloud project using Application Default Credentials
+  (no API key) authenticated, was accepted for `us-central1` and reached the
+  provider, which refused with `403 PERMISSION_DENIED / BILLING_DISABLED`. So ADC
+  discovery, region acceptance, structured provider errors and terminal-error
+  handling are verified against the real service; a **successful** generation, and
+  therefore the parser against a live Vertex response shape, is not. Enabling
+  billing is a spend decision and was not taken, so issue #1 stays open.
+  `docs/release/verification.md` records the detail, and the threat model's
+  accepted risk 7 now says exactly this rather than "not live-verified".
 * **The credential guard's verdict is now reproducible.** It walked the working
   directory, so an untracked local file could fail it locally while CI passed — a
   guard whose two verdicts differ for the same repository content is one
