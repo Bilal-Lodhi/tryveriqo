@@ -30,10 +30,12 @@ import {
   createSession,
   deleteSession,
   fetchSessionReview,
+  fetchTestSuite,
   ingestMicroEvents,
   storeIntegrityReport,
   updateSessionCode,
 } from "../mcp-client.js";
+import { buildReferenceCompletions, type BuiltReferences } from "../integrity-references.js";
 import { finiteScore, isUsableScore, selectLatestReport } from "../integrity-report.js";
 import { nowIso } from "../utils/time.js";
 import type { ApiDependencies } from "./dependencies.js";
@@ -172,11 +174,18 @@ export function integrityRoutes(deps: ApiDependencies): Hono<AppEnv> {
           // analysis is shown, and the paste window has its own bound.
           const pasteContents = session.recentPasteContents;
 
+          // The similarity report needs something to compare against. Until now
+          // the caller supplied nothing, so "similarity" meant similarity to
+          // nothing. The assessment's own stored reference solution is a real,
+          // self-hosted, reviewable source — and it never exposes one candidate's
+          // code to another.
+          const references = await loadReferences(session.assessmentId, session.problemId, deps, requestId);
+
           const analysed = await ai.analyzeIntegrity(
             session.currentCode,
             pasteContents,
             keystrokeMetrics,
-            [],
+            references.references,
           );
 
           integrityReport = {
@@ -187,7 +196,17 @@ export function integrityRoutes(deps: ApiDependencies): Hono<AppEnv> {
             assessmentId: session.assessmentId,
             keystrokeMetrics,
             generatedAt: analysed.generatedAt || nowIso(),
+            // Record what was compared, and whether anything was. A score with no
+            // stated source is the thing this replaces.
+            plagiarismReport: analysed.plagiarismReport
+              ? { ...analysed.plagiarismReport, source: references.source }
+              : null,
           };
+
+          integrityReport = applySimilarityThreshold(
+            integrityReport,
+            config.integrity.plagiarismThreshold,
+          );
 
           session.lastIntegrityReport = integrityReport;
           session.lastAnalyzedCodeHash = codeHash;
@@ -454,6 +473,91 @@ function latestStoredReport(reports: readonly Record<string, unknown>[]): Integr
       ? { keystrokeMetrics: best["keystrokeMetrics"] as IntegrityReport["keystrokeMetrics"] }
       : {}),
     generatedAt: String(best["generatedAt"] ?? nowIso()),
+  };
+}
+
+/**
+ * Loads the reference material for a session's assessment and problem.
+ *
+ * A failure to load is not a failure to analyse: the analysis proceeds with no
+ * references and the report says so, because losing the similarity comparison is
+ * better than losing the whole integrity signal.
+ */
+async function loadReferences(
+  assessmentId: string,
+  problemId: string,
+  deps: ApiDependencies,
+  requestId: string,
+): Promise<BuiltReferences> {
+  const { mcp, log } = deps;
+
+  const suite = await fetchTestSuite(mcp, assessmentId);
+  if (!suite.ok) {
+    log(
+      `[integrity] [${requestId}] Reference material unavailable for assessmentId="${assessmentId}": ` +
+        `${suite.error ?? "unknown"}`,
+    );
+    return buildReferenceCompletions(null, problemId || null);
+  }
+
+  // The tool wraps the document; unwrap so a missing suite reads as missing.
+  const document = suite.data?.data ?? null;
+  const built = buildReferenceCompletions(document, problemId || null);
+
+  if (built.references.length === 0) {
+    log(
+      `[integrity] [${requestId}] No similarity reference for assessmentId="${assessmentId}" ` +
+        `problemId="${problemId || "(none)"}": ${built.source.reason ?? "unknown"}`,
+    );
+  }
+
+  return built;
+}
+
+/**
+ * Raises an advisory flag when similarity reaches the configured threshold.
+ *
+ * Deterministic and separate from the model's own scoring: the model's
+ * `overallScore` is left exactly as it produced it, and this only adds a
+ * reviewer-facing note. It therefore cannot change a session's status or trip the
+ * alert threshold on its own.
+ *
+ * The wording matters. A high similarity to the assessment's own reference
+ * solution is one explanation among several — a correct, idiomatic answer looks
+ * like a correct, idiomatic answer — so the flag states the measurement and
+ * refuses to draw the conclusion.
+ */
+function applySimilarityThreshold(
+  report: IntegrityReport,
+  threshold: number,
+): IntegrityReport {
+  const similarity = report.plagiarismReport?.overallSimilarity;
+  if (typeof similarity !== "number" || !Number.isFinite(similarity)) return report;
+  if (!Number.isFinite(threshold) || similarity < threshold) return report;
+
+  const source = report.plagiarismReport?.source;
+  const against =
+    source?.kind === "assessment-solution"
+      ? `the assessment's own reference solution${source.suiteId ? ` (suite ${source.suiteId})` : ""}`
+      : "the supplied reference material";
+
+  return {
+    ...report,
+    flags: [
+      ...report.flags,
+      {
+        flagType: "SIMILARITY_ABOVE_THRESHOLD",
+        severity: "medium",
+        sourceEventId: "",
+        description:
+          `Similarity to ${against} is ${similarity.toFixed(2)}, at or above the configured ` +
+          `threshold of ${threshold}. This is a similarity indicator for a reviewer to check, ` +
+          "not a finding of plagiarism: a correct and idiomatic solution can resemble the " +
+          "reference without any copying.",
+        confidence: 0.5,
+        timestamp: nowIso(),
+      },
+    ],
   };
 }
 

@@ -282,8 +282,13 @@ These are deliberate v0.1.0 boundaries. They are documented rather than hidden.
    [Privacy and security warning](#privacy-and-security-warning).
 3. **Integrity output is advisory.** Flags and scores are signals for a human
    reviewer. Nothing in this system proves that a candidate cheated.
-4. **Reference completions are caller-supplied.** The plagiarism report structure
-   is settled, but the corpus it compares against is not built in.
+4. **Similarity compares against the assessment's own reference solution.** The
+   stored suite's `expectedAnswer` and `starterCode` for the problem are the
+   corpus, so a session's `assessmentId` must name the suite's `suiteId`. There is
+   no open-web corpus, no cross-candidate corpus, and a high score is a similarity
+   indicator — a correct, idiomatic solution can resemble the reference without any
+   copying. See
+   [docs/configuration.md](docs/configuration.md#what-the-similarity-report-compares-against).
 5. **No reviewer accounts.** There is one shared operator credential; there is no
    per-reviewer identity, role or audit trail.
 6. **Telemetry capture is client-side.** The API and console accept and display

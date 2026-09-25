@@ -210,6 +210,33 @@ export interface PlagiarismReport {
   matchedSnippets: PlagiarismMatch[];
   /** 0-1 heuristic likelihood that the submission is machine-generated. */
   aiCompletionLikelihood: number;
+  /**
+   * What the comparison was actually against.
+   *
+   * Attached by the API rather than produced by the model, because "similarity to
+   * what?" is exactly the question a bare score cannot answer — and the answer
+   * determines how much the number is worth.
+   */
+  source?: ReferenceSource;
+}
+
+/** What a similarity report was compared against, stated explicitly. */
+export interface ReferenceSource {
+  /**
+   * `assessment-solution` — the stored suite's own reference answer and/or starter
+   * code for this problem.
+   * `none` — nothing was compared, and `reason` says why.
+   */
+  kind: "assessment-solution" | "none";
+  /** Suite the references came from, when there was one. */
+  suiteId: string | null;
+  problemId: string | null;
+  /** How many reference strings were supplied. */
+  count: number;
+  /** Why there are none, when there are none. */
+  reason?: string;
+  /** How the problem was chosen within the suite. */
+  matchedBy?: string;
 }
 
 export interface PlagiarismMatch {

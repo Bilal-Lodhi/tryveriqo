@@ -79,6 +79,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+* **The similarity report compared against nothing.** `analyzeIntegrity` took a
+  `referenceCompletions` argument and the ingest route passed an empty array, so
+  "similarity" meant similarity to nothing — a check that read as happening and
+  was not. It now compares against the **stored assessment's own reference
+  solution**: the suite's `expectedAnswer` and `starterCode` for the session's
+  problem, bounded to 3 references and 20,000 characters, with the source recorded
+  on the report as `plagiarismReport.source` (`kind`, `suiteId`, `problemId`,
+  `count`, or a `reason` when there was nothing to compare). Cross-candidate
+  comparison was deliberately **not** chosen: the model can echo a matched snippet
+  into the report, which the candidate can read, so a cross-candidate corpus would
+  leak one candidate's code to another. `PLAGIARISM_THRESHOLD` — previously parsed
+  and never read — now adds an advisory `SIMILARITY_ABOVE_THRESHOLD` flag at or
+  above the threshold, leaving the model's own score untouched so it cannot change
+  a session's status on its own.
 * **Recovered session counters were page-derived, so thresholds could
   under-trigger.** Rebuilding a projection replays the events the store returned,
   and `get_session_review` returns at most one page — so for a session longer than
