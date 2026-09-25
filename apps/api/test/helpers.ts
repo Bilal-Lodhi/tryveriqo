@@ -48,6 +48,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
       registrationCapabilityTtlSeconds: 900,
     },
     cors: { allowedOrigins: ["http://localhost:8080"] },
+    rateLimit: { trustProxyHeaders: false },
     integrity: {
       sessionTtlSeconds: 3600,
       maxPasteEventsPerSession: 5,
@@ -65,6 +66,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     integrity: { ...base.integrity, ...(overrides.integrity ?? {}) },
     mcp: { ...base.mcp, ...(overrides.mcp ?? {}) },
     cors: { ...base.cors, ...(overrides.cors ?? {}) },
+    rateLimit: { ...base.rateLimit, ...(overrides.rateLimit ?? {}) },
     database: { ...base.database, ...(overrides.database ?? {}) },
   };
 }

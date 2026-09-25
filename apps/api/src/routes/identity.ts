@@ -88,7 +88,12 @@ export function identityRoutes(deps: ApiDependencies): Hono<AppEnv> {
     // Authentication first: an unauthenticated caller must not be able to spend
     // the operator's rate budget.
     requireOperator(),
-    rateLimit({ windowMs: 60_000, max: 60, name: "registration capability issuance" }),
+    rateLimit({
+      windowMs: 60_000,
+      max: 60,
+      name: "registration capability issuance",
+      trustProxyHeaders: config.rateLimit.trustProxyHeaders,
+    }),
     async (c) => {
       const requestId = c.get("correlationId") ?? crypto.randomUUID();
 

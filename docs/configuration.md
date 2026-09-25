@@ -71,6 +71,41 @@ token **and** every outstanding registration capability. That is the intended
 lever for ending all candidate sessions at once, or for revoking capabilities
 that were handed out but not yet used.
 
+### Rate limiting
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `TRUST_PROXY_HEADERS` | `false` | Trust `X-Forwarded-For` / `X-Real-Ip` for rate-limit bucket keys |
+
+In-process limits, per bucket, per minute:
+
+| Endpoint | Limit | Bucket key |
+| --- | --- | --- |
+| `POST /api/v1/identity/set` | 30 | client address |
+| `POST /api/v1/generate` | 20 | client address |
+| `POST /api/v1/identity/capability` | 60 | client address |
+| `POST /api/v1/integrity/ingest` | 240 | authenticated candidate, else address |
+
+Ingestion is keyed per **candidate** rather than per connection so that candidates
+behind one address — a shared NAT, a campus network — do not share a budget. The
+operator credential falls back to the address.
+
+`TRUST_PROXY_HEADERS` defaults to **false**, and that default is the
+security-relevant one. `X-Forwarded-For` and `X-Real-Ip` are ordinary request
+headers that any direct client can set, so keying on them without a proxy in front
+means rotating one header evades every limit above. Enable it **only** when every
+request reaches this process through a proxy you control that overwrites those
+headers. Only the exact strings `true`, `1` or `yes` enable it, so a typo leaves
+the safe default.
+
+The bucket map is capped at 10,000 entries and evicts rather than grows: expired
+buckets first, and if every bucket is still live the soonest-to-expire one is
+dropped. A client rotating keys therefore cannot grow it without bound — though
+note that eviction also means such a client can displace other callers' buckets.
+
+These are backstops, not a hardened DoS defence. Put an edge limiter in front of a
+public deployment.
+
 ### Request limits
 
 Every route that accepts a body has a ceiling, applied **before** the body is
