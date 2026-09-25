@@ -1,6 +1,6 @@
 {
   "name": "tryveriqo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "tryveriqo — AI-assisted assessment generation with candidate session telemetry and reviewer integrity signals",
   "license": "Apache-2.0",

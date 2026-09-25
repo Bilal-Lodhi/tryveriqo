@@ -27,7 +27,7 @@ import { createToolHandlers, TOOL_DEFINITIONS, dispatchTool } from "./tools.js";
 const store = new MongoStore();
 
 const server = new Server(
-  { name: "tryveriqo-mcp-mongodb", version: "0.1.0" },
+  { name: "tryveriqo-mcp-mongodb", version: "0.2.0" },
   { capabilities: { tools: {}, resources: {}, logging: {} } },
 );
 

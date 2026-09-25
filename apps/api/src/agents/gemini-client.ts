@@ -1,9 +1,8 @@
 /**
  * Gemini client — the single AI provider boundary for the tryveriqo API.
  *
- * Provider choice for v0.1.0 is Gemini, which is what this product was built
- * against. Two transports are supported, selected explicitly by
- * `AI_PROVIDER_MODE`:
+ * Provider choice is Gemini, which is what this product was built against. Two
+ * transports are supported, selected explicitly by `AI_PROVIDER_MODE`:
  *
  *   gemini-api (default) — Gemini Developer API, authenticated with
  *                          `GEMINI_API_KEY`. Self-hosting friendly.

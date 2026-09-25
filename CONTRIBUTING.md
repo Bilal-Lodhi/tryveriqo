@@ -99,7 +99,7 @@ In code, UI text, documentation and commit messages:
 | detects cheating | surfaces integrity signals |
 | proves plagiarism | reports similarity to reference material |
 | flags a cheater | raises a suspicious behaviour indicator |
-| production ready | v0.1.0 release candidate |
+| production ready | a release candidate, prepared but not published |
 | compliance certified | *(nothing — there is no certification)* |
 
 A human reviewer makes the judgement. The software assists.

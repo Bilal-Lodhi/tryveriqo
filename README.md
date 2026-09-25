@@ -9,14 +9,19 @@ them.**
 > behaviour indicators* that a human reviewer interprets. No output of this
 > system should be treated as proof that a candidate cheated.
 
-> **Status: v0.1.0 pre-release.** Published as a pre-release at
+> **Status: v0.1.0 is the published pre-release; v0.2.0 is prepared on `main`.**
+> The current published artifact is the v0.1.0 pre-release at
 > [releases/tag/v0.1.0](https://github.com/Bilal-Lodhi/tryveriqo/releases/tag/v0.1.0).
-> The API, the console and the datastore layer are built and tested, and the AI
-> provider path has been exercised against a live Gemini credential. This is **not
-> production ready** and there is no hosted instance. See
-> [Release readiness](#release-readiness) for exactly what was observed, and
-> [docs/release/checklist.md](docs/release/checklist.md) for what is deliberately
-> still open.
+> A v0.2.0 release candidate is prepared on the default branch and is **not
+> published**: no `v0.2.0` tag exists and no release has been created. The API, the
+> console and the datastore layer are built and tested, and the Gemini Developer
+> API path has been exercised against a live credential. This is **not production
+> ready** and there is no hosted instance. See
+> [Release readiness](#release-readiness) for exactly what was observed,
+> [docs/release/release-notes-v0.2.0.md](docs/release/release-notes-v0.2.0.md) for
+> what is prepared, and
+> [docs/release/errata-v0.1.0.md](docs/release/errata-v0.1.0.md) for where v0.1.0's
+> published claims were later found incomplete.
 
 ---
 
@@ -260,7 +265,8 @@ please read the integrity-claims guidance there before writing user-facing text.
 
 ## Known limitations
 
-These are deliberate v0.1.0 boundaries. They are documented rather than hidden.
+These are deliberate boundaries of the prepared v0.2.0 candidate. They are
+documented rather than hidden.
 
 1. **Registration proves authorization, not identity.** `POST
    /api/v1/identity/set` requires an operator-issued registration capability bound

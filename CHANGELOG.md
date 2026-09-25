@@ -4,7 +4,17 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — unreleased
+
+Prepared on the default branch and **not published**: no `v0.2.0` tag exists and no
+GitHub Release has been created. The current published artifact remains the v0.1.0
+pre-release. Where v0.1.0's published claims were later found incomplete, see
+[docs/release/errata-v0.1.0.md](docs/release/errata-v0.1.0.md) — v0.1.0 itself is
+not rewritten.
+
+Draft notes: [docs/release/release-notes-v0.2.0.md](docs/release/release-notes-v0.2.0.md).
+Migration: [docs/release/migration-v0.1.0-to-v0.2.0.md](docs/release/migration-v0.1.0-to-v0.2.0.md).
+Checklist: [docs/release/checklist-v0.2.0.md](docs/release/checklist-v0.2.0.md).
 
 ### Security
 

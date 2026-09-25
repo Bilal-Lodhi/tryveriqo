@@ -42,8 +42,8 @@ termination carry `requireOperator()`. Assessment generation carries
 `401` for anonymous callers on each route.
 
 **Residual.** Anyone who obtains the operator token has full read access. There is
-no per-reviewer identity in v0.1.0. This is documented, not hidden, and is the
-main reason the console must not be publicly hosted with a production token.
+no per-reviewer identity. This is documented, not hidden, and is the main reason
+the console must not be publicly hosted with a production token.
 
 ### T2 — Unauthenticated assessment generation (cost abuse)
 
@@ -279,7 +279,10 @@ security one.
 
 ## Accepted risks
 
-These are deliberate, documented limitations of a self-hosted v0.1.0:
+These are deliberate, documented limitations of a self-hosted deployment. They
+describe the prepared v0.2.0 candidate; several differ from what v0.1.0 published,
+and [docs/release/errata-v0.1.0.md](../release/errata-v0.1.0.md) records those
+differences.
 
 1. **Registration proves authorization, not identity.** Registration requires an
    operator-issued capability bound to the candidate id (see T3). What that

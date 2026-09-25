@@ -4,13 +4,19 @@
 
 | Version | Supported |
 | --- | --- |
-| `v0.1.0` (pre-release) | Yes — current |
+| `v0.2.0` (prepared on `main`, **not published**) | The default branch is where security fixes land |
+| `v0.1.0` (pre-release) | Yes — the current published artifact |
 | Anything older | No — there is no older version |
 
-`v0.1.0` is published as a **pre-release**. It is not production ready, and no
-version has been designated stable. Security fixes are applied to the default
-branch and to the current pre-release line; there are no maintained older
-versions.
+`v0.1.0` is published as a **pre-release** and remains the current published
+artifact. A v0.2.0 release candidate is prepared on the default branch; no
+`v0.2.0` tag exists and no release has been created. No version has been
+designated stable, and none is production ready. Security fixes are applied to the
+default branch; there are no maintained older versions.
+
+See [docs/release/errata-v0.1.0.md](docs/release/errata-v0.1.0.md) for the places
+where v0.1.0's published security claims were later found incomplete — notably the
+cross-candidate guarantees and the open-registration residual.
 
 ## Reporting a vulnerability
 
