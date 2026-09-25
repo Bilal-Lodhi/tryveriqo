@@ -24,6 +24,7 @@ import {
   type AppEnv,
 } from "../middleware/auth.js";
 import { fetchSessionReview, listSessions, type SessionReviewData } from "../mcp-client.js";
+import { finiteScore, isUsableScore, selectLatestReport } from "../integrity-report.js";
 import { nowIso } from "../utils/time.js";
 import type { ApiDependencies } from "./dependencies.js";
 
@@ -95,9 +96,17 @@ export function sessionRoutes(deps: ApiDependencies): Hono<AppEnv> {
       );
 
       const integritySummary = reports.map((report) => toIntegrityReport(report, data));
-      const latest = integritySummary[integritySummary.length - 1] ?? null;
+      // Select by newest `generatedAt`, never by array position: the store
+      // returns reports newest-first, so a positional pick would hand the
+      // reviewer the OLDEST score and flags for this session.
+      const latestDocument = selectLatestReport(reports);
+      const latest = latestDocument ? toIntegrityReport(latestDocument, data) : null;
       const hasSubmission = events.some((event) => event.eventType === "SUBMIT");
       const status = deriveStatus(data.session.status, hasSubmission, latest, alertThreshold);
+      // An unusable stored score yields no provisional score at all. Defaulting
+      // it to zero would display a confident 100 for a session whose analysis
+      // data is malformed, which is exactly the misreading this route must avoid.
+      const scoreUsable = latestDocument !== null && isUsableScore(latestDocument["overallScore"]);
 
       const response: SessionReviewResponse = {
         sessionId: data.session.sessionId,
@@ -109,7 +118,10 @@ export function sessionRoutes(deps: ApiDependencies): Hono<AppEnv> {
         integritySummary,
         // A provisional score: the review is assistance for a human reviewer, and
         // the final assessment score remains a reviewer decision.
-        finalScore: hasSubmission && latest ? Math.max(0, 100 - latest.overallScore) : null,
+        finalScore:
+          hasSubmission && latest && scoreUsable
+            ? Math.max(0, 100 - latest.overallScore)
+            : null,
       };
 
       return c.json({ success: true, data: response });
@@ -143,10 +155,7 @@ function summarise(
           .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null
       : (session.updatedAt ?? null);
 
-  const latestScore =
-    reports.length > 0
-      ? Number((reports[reports.length - 1] as Record<string, unknown>)["overallScore"] ?? 0)
-      : 0;
+  const latestScore = finiteScore(selectLatestReport(reports)?.["overallScore"]);
 
   return {
     sessionId: session.sessionId,
@@ -163,7 +172,7 @@ function summarise(
     tabSwitchCount: events.filter(
       (event) => event.eventType === "TAB_SWITCH" || event.eventType === "WINDOW_BLUR",
     ).length,
-    integrityScore: Number.isFinite(latestScore) ? latestScore : 0,
+    integrityScore: latestScore,
     lastEventTimestamp,
   };
 }
@@ -279,7 +288,7 @@ function toIntegrityReport(
     sessionId: String(raw["sessionId"] ?? data.session?.sessionId ?? ""),
     candidateId: String(raw["candidateId"] ?? data.session?.candidateId ?? ""),
     assessmentId: String(raw["assessmentId"] ?? data.session?.assessmentId ?? ""),
-    overallScore: Number(raw["overallScore"] ?? 0),
+    overallScore: finiteScore(raw["overallScore"]),
     flags,
     plagiarismReport:
       (raw["plagiarismReport"] as IntegrityReport["plagiarismReport"] | undefined) ?? null,

@@ -151,5 +151,109 @@ void main() {
       expect(record.latestReport?.overallScore, 30);
       expect(record.finalScore, 70);
     });
+
+    test('selects the newest report, not the last in the array', () {
+      // The API returns a session's reports newest-first, so the newest report
+      // is FIRST here. A positional `last` would show the reviewer the oldest
+      // score and flags.
+      final record = ReviewRecord.fromJson({
+        'sessionId': 'session-1',
+        'candidateId': 'candidate-1',
+        'assessmentId': 'assessment-1',
+        'status': 'submitted',
+        'submittedCode': '',
+        'timeline': [],
+        'integritySummary': [
+          {
+            'integrityReportId': 'report-newest',
+            'overallScore': 80,
+            'generatedAt': '2026-01-01T03:00:00.000Z',
+            'flags': [],
+            'behavioralAnomalies': [],
+          },
+          {
+            'integrityReportId': 'report-oldest',
+            'overallScore': 10,
+            'generatedAt': '2026-01-01T01:00:00.000Z',
+            'flags': [],
+            'behavioralAnomalies': [],
+          },
+        ],
+      });
+
+      expect(record.latestReport?.integrityReportId, 'report-newest');
+      expect(record.latestReport?.overallScore, 80);
+    });
+
+    test('newest-report selection does not depend on array order', () {
+      final record = ReviewRecord.fromJson({
+        'sessionId': 'session-1',
+        'candidateId': 'candidate-1',
+        'assessmentId': 'assessment-1',
+        'status': 'submitted',
+        'submittedCode': '',
+        'timeline': [],
+        // Deliberately oldest-first this time.
+        'integritySummary': [
+          {
+            'integrityReportId': 'report-oldest',
+            'overallScore': 10,
+            'generatedAt': '2026-01-01T01:00:00.000Z',
+            'flags': [],
+            'behavioralAnomalies': [],
+          },
+          {
+            'integrityReportId': 'report-newest',
+            'overallScore': 80,
+            'generatedAt': '2026-01-01T03:00:00.000Z',
+            'flags': [],
+            'behavioralAnomalies': [],
+          },
+        ],
+      });
+
+      expect(record.latestReport?.integrityReportId, 'report-newest');
+    });
+
+    test('reports without timestamps fall back to the newest-first order', () {
+      final record = ReviewRecord.fromJson({
+        'sessionId': 'session-1',
+        'candidateId': 'candidate-1',
+        'assessmentId': 'assessment-1',
+        'status': 'in_progress',
+        'submittedCode': '',
+        'timeline': [],
+        'integritySummary': [
+          {
+            'integrityReportId': 'first',
+            'overallScore': 80,
+            'flags': [],
+            'behavioralAnomalies': [],
+          },
+          {
+            'integrityReportId': 'second',
+            'overallScore': 10,
+            'flags': [],
+            'behavioralAnomalies': [],
+          },
+        ],
+      });
+
+      expect(record.latestReport?.integrityReportId, 'first');
+    });
+
+    test('a review with no reports has no latest report', () {
+      final record = ReviewRecord.fromJson({
+        'sessionId': 'session-1',
+        'candidateId': 'candidate-1',
+        'assessmentId': 'assessment-1',
+        'status': 'in_progress',
+        'submittedCode': '',
+        'timeline': [],
+        'integritySummary': [],
+      });
+
+      expect(record.latestReport, isNull);
+    });
   });
 }

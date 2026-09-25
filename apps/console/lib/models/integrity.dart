@@ -327,8 +327,28 @@ class ReviewRecord {
   }
 
   /// The most recent integrity report, if any analysis has run.
-  IntegrityReport? get latestReport =>
-      integritySummary.isEmpty ? null : integritySummary.last;
+  ///
+  /// Selected by newest `generatedAt`, never by position. The API returns a
+  /// session's reports newest-first, so a positional `last` silently shows the
+  /// reviewer the **oldest** score, flags and plagiarism report for a session
+  /// that has been analysed more than once.
+  IntegrityReport? get latestReport {
+    if (integritySummary.isEmpty) return null;
+
+    IntegrityReport? best;
+    DateTime? bestAt;
+    for (final report in integritySummary) {
+      final at = DateTime.tryParse(report.generatedAt);
+      if (at == null) continue;
+      if (bestAt == null || at.isAfter(bestAt)) {
+        bestAt = at;
+        best = report;
+      }
+    }
+
+    // No usable timestamps: fall back to the API's documented newest-first order.
+    return best ?? integritySummary.first;
+  }
 
   /// A session whose result is settled: its code can no longer change.
   bool get isLocked =>

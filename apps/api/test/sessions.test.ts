@@ -295,6 +295,179 @@ describe("session review", () => {
   });
 });
 
+/**
+ * The store returns a session's integrity reports **newest first**
+ * (`getIntegrityReports` sorts by `generatedAt: -1`). Review must therefore not
+ * assume the newest report is last in the array, or a reviewer is shown the
+ * earliest score and flags for a session that has been analysed several times.
+ */
+const STORED_REPORTS_NEWEST_FIRST = [
+  {
+    integrityReportId: "report-newest",
+    overallScore: 80,
+    generatedAt: "2026-01-01T03:00:00.000Z",
+    flags: [
+      {
+        flagType: "NEWEST_FLAG",
+        severity: "high",
+        sourceEventId: "",
+        description: "only present on the newest report",
+        confidence: 0.9,
+        timestamp: "2026-01-01T03:00:00.000Z",
+      },
+    ],
+  },
+  {
+    integrityReportId: "report-oldest",
+    overallScore: 10,
+    generatedAt: "2026-01-01T01:00:00.000Z",
+    flags: [
+      {
+        flagType: "OLDEST_FLAG",
+        severity: "low",
+        sourceEventId: "",
+        description: "only present on the oldest report",
+        confidence: 0.5,
+        timestamp: "2026-01-01T01:00:00.000Z",
+      },
+    ],
+  },
+];
+
+describe("newest integrity report selection", () => {
+  const SUBMITTED = {
+    sessionId: "session-1",
+    candidateId: "candidate-1",
+    assessmentId: "assessment-1",
+    status: "submitted",
+    submittedCode: "export const answer = 42;",
+  };
+
+  test("review derives its provisional score from the newest report", async () => {
+    const { app } = makeHarness({
+      session: SUBMITTED,
+      events: [{ eventType: "SUBMIT", timestamp: "2026-01-01T03:30:00.000Z", payload: {} }],
+      integrityReports: STORED_REPORTS_NEWEST_FIRST,
+    });
+
+    const response = await app.request("/api/v1/sessions/session-1/review", { headers: OPERATOR });
+    const body = (await response.json()) as { data: { finalScore: number } };
+
+    assert.equal(
+      body.data.finalScore,
+      20,
+      "finalScore is 100 minus the NEWEST report's score (80), not the oldest (10)",
+    );
+  });
+
+  test("review flags a session using the newest report's score", async () => {
+    // Newest is above the alert threshold (50) and oldest is below it, so a
+    // wrong selection changes the derived status too.
+    const { app } = makeHarness({
+      session: SUBMITTED,
+      events: [{ eventType: "SUBMIT", timestamp: "2026-01-01T03:30:00.000Z", payload: {} }],
+      integrityReports: STORED_REPORTS_NEWEST_FIRST,
+    });
+
+    const response = await app.request("/api/v1/sessions/session-1/review", { headers: OPERATOR });
+    const body = (await response.json()) as { data: { status: string } };
+    assert.equal(body.data.status, "flagged");
+  });
+
+  test("the newest report's flags are the ones surfaced as latest", async () => {
+    const { app } = makeHarness({
+      session: SUBMITTED,
+      events: [{ eventType: "SUBMIT", timestamp: "2026-01-01T03:30:00.000Z", payload: {} }],
+      integrityReports: STORED_REPORTS_NEWEST_FIRST,
+    });
+
+    const response = await app.request("/api/v1/sessions/session-1/review", { headers: OPERATOR });
+    const body = (await response.json()) as {
+      data: { integritySummary: Array<{ integrityReportId: string }> };
+    };
+
+    // The whole list is still returned; the API must not silently drop reports.
+    assert.equal(body.data.integritySummary.length, 2);
+    assert.deepEqual(
+      body.data.integritySummary.map((report) => report.integrityReportId).sort(),
+      ["report-newest", "report-oldest"],
+    );
+  });
+
+  test("selection does not depend on the order the store returned", async () => {
+    const { app } = makeHarness({
+      session: SUBMITTED,
+      events: [{ eventType: "SUBMIT", timestamp: "2026-01-01T03:30:00.000Z", payload: {} }],
+      // Deliberately oldest-first this time.
+      integrityReports: [...STORED_REPORTS_NEWEST_FIRST].reverse(),
+    });
+
+    const response = await app.request("/api/v1/sessions/session-1/review", { headers: OPERATOR });
+    const body = (await response.json()) as { data: { finalScore: number } };
+    assert.equal(body.data.finalScore, 20);
+  });
+
+  test("the session list scores a session from the newest report", async () => {
+    const { app } = makeHarness({
+      session: SUBMITTED,
+      integrityReports: STORED_REPORTS_NEWEST_FIRST,
+    });
+
+    const response = await app.request("/api/v1/sessions", { headers: OPERATOR });
+    const body = (await response.json()) as { data: Array<{ integrityScore: number }> };
+    assert.equal(
+      body.data[0]?.integrityScore,
+      80,
+      "the cohort list must show the newest score, not the oldest",
+    );
+  });
+
+  test("a report without a usable timestamp still yields a score", async () => {
+    const { app } = makeHarness({
+      session: SUBMITTED,
+      events: [{ eventType: "SUBMIT", timestamp: "2026-01-01T03:30:00.000Z", payload: {} }],
+      integrityReports: [{ integrityReportId: "only", overallScore: 40 }],
+    });
+
+    const response = await app.request("/api/v1/sessions/session-1/review", { headers: OPERATOR });
+    const body = (await response.json()) as { data: { finalScore: number } };
+    assert.equal(body.data.finalScore, 60);
+  });
+
+  test("a non-numeric stored score never becomes NaN", async () => {
+    const { app } = makeHarness({
+      session: SUBMITTED,
+      events: [{ eventType: "SUBMIT", timestamp: "2026-01-01T03:30:00.000Z", payload: {} }],
+      integrityReports: [{ integrityReportId: "bad", overallScore: "not-a-number" }],
+    });
+
+    const response = await app.request("/api/v1/sessions/session-1/review", { headers: OPERATOR });
+    const body = (await response.json()) as { data: { finalScore: number | null } };
+
+    assert.equal(
+      body.data.finalScore,
+      null,
+      "an unusable stored score yields no provisional score rather than NaN or a confident 100",
+    );
+  });
+
+  test("a stored score outside 0-100 is bounded", async () => {
+    const { app } = makeHarness({
+      session: SUBMITTED,
+      events: [{ eventType: "SUBMIT", timestamp: "2026-01-01T03:30:00.000Z", payload: {} }],
+      integrityReports: [{ integrityReportId: "wild", overallScore: 100000 }],
+    });
+
+    const response = await app.request("/api/v1/sessions/session-1/review", { headers: OPERATOR });
+    const body = (await response.json()) as {
+      data: { finalScore: number; integritySummary: Array<{ overallScore: number }> };
+    };
+
+    assert.equal(body.data.integritySummary[0]?.overallScore, 100);
+    assert.equal(body.data.finalScore, 0);
+  });
+});
+
 describe("session listing", () => {
   test("enriches each session with telemetry counts", async () => {
     const { app } = makeHarness({
