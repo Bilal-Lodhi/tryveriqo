@@ -8,6 +8,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+* **The reviewer was shown the *oldest* integrity report.** `integrity_reports`
+  holds a series per session and the store returns it newest-first, but review
+  selected the last array element — the oldest report — and derived the session's
+  status and provisional `finalScore` from it. A session analysed more than once
+  therefore displayed its earliest score and flags, and could be reported as
+  `submitted` when the newest report was above the alert threshold. Selection is
+  now by newest `generatedAt` in one shared helper, applied in both the API and
+  the console, so it cannot invert with a sort order. A stored score that is not a
+  finite number no longer produces `NaN`: it is bounded to `0-100`, and an
+  unusable score yields `finalScore: null` rather than a confident `100`.
 * **Cross-candidate telemetry injection.** Ingestion decided who a batch belonged
   to from its first event alone, while the validator allowed a batch to carry
   events naming different candidates. A caller could therefore send their own

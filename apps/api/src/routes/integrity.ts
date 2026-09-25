@@ -34,6 +34,7 @@ import {
   storeIntegrityReport,
   updateSessionCode,
 } from "../mcp-client.js";
+import { finiteScore, isUsableScore, selectLatestReport } from "../integrity-report.js";
 import { nowIso } from "../utils/time.js";
 import type { ApiDependencies } from "./dependencies.js";
 
@@ -411,41 +412,22 @@ async function resolveSession(
  * Picks the most recent stored integrity report that is safe to reuse, or null.
  *
  * Selection is by newest `generatedAt` rather than by array position, so it does
- * not silently invert if the store's sort order ever changes. When no entry
- * carries a parseable timestamp the store's documented newest-first order is
- * used as the tie-break.
- *
- * Stored documents are untrusted input here — they may predate the current
- * shape, or carry a non-numeric score. A report is only reusable when it has a
- * finite `overallScore`, because that value drives the alert threshold and is
- * returned to the caller.
+ * not silently invert if the store's sort order ever changes. Stored documents
+ * are untrusted input here — they may predate the current shape, or carry a
+ * non-numeric score. A report is only reusable when it has a usable
+ * `overallScore`, because that value drives the alert threshold and is returned
+ * to the caller.
  */
 function latestStoredReport(reports: readonly Record<string, unknown>[]): IntegrityReport | null {
-  let best: Record<string, unknown> | null = null;
-  let bestAt = Number.NEGATIVE_INFINITY;
-
-  for (const raw of reports) {
-    if (!raw) continue;
-    const at = new Date(String(raw["generatedAt"] ?? "")).getTime();
-    if (Number.isFinite(at) && at > bestAt) {
-      bestAt = at;
-      best = raw;
-    }
-  }
-
-  // No usable timestamps: the store returns reports newest-first.
-  best ??= reports.find((raw) => raw) ?? null;
-  if (!best) return null;
-
-  const score = Number(best["overallScore"]);
-  if (!Number.isFinite(score)) return null;
+  const best = selectLatestReport(reports);
+  if (!best || !isUsableScore(best["overallScore"])) return null;
 
   return {
     integrityReportId: String(best["integrityReportId"] ?? best["_id"] ?? crypto.randomUUID()),
     sessionId: String(best["sessionId"] ?? ""),
     candidateId: String(best["candidateId"] ?? ""),
     assessmentId: String(best["assessmentId"] ?? ""),
-    overallScore: score,
+    overallScore: finiteScore(best["overallScore"]),
     flags: Array.isArray(best["flags"]) ? (best["flags"] as IntegrityReport["flags"]) : [],
     plagiarismReport:
       (best["plagiarismReport"] as IntegrityReport["plagiarismReport"] | undefined) ?? null,
@@ -459,7 +441,8 @@ function latestStoredReport(reports: readonly Record<string, unknown>[]): Integr
   };
 }
 
-function sessionSummary(session: SessionState): Record<string, unknown> {  return {
+function sessionSummary(session: SessionState): Record<string, unknown> {
+  return {
     sessionId: session.sessionId,
     candidateId: session.candidateId,
     assessmentId: session.assessmentId,

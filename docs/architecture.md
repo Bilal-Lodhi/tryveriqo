@@ -155,6 +155,32 @@ a test asserts the naming.
 with a `$match → $sort → $group → $replaceRoot` pipeline, so a candidate with
 many analyses of one session still produces one row.
 
+### Which report is "latest"
+
+A session can be analysed more than once, so `integrity_reports` holds a series
+per session. The store returns them **newest-first** (`{generatedAt: -1}`), and
+that ordering is an implementation detail of one query — not something the
+reviewer-facing logic may depend on.
+
+`apps/api/src/integrity-report.ts` is the single place that decides which report
+is current. `selectLatestReport` picks the entry with the newest `generatedAt`
+rather than the first or last element, so selection cannot invert if a sort order
+changes. `finiteScore` bounds a stored score to `0-100` and never returns `NaN`.
+
+Both matter for review. A positional pick silently selects the **oldest** report
+and shows a reviewer the earliest score, flags and plagiarism report for a
+session analysed several times — and derives the session's status and provisional
+`finalScore` from it. And a non-numeric stored score would otherwise propagate
+`NaN` into a displayed score.
+
+When the newest report's score is unusable, `GET /api/v1/sessions/:sessionId/review`
+returns `finalScore: null` rather than defaulting to zero. Zero would render as a
+confident `100` for a session whose analysis data is malformed, which is the
+misreading the review surface exists to avoid.
+
+The console applies the same rule in `ReviewRecord.latestReport`, so the flags and
+plagiarism panel cannot disagree with the score header.
+
 ## Integrity engine
 
 `apps/api/src/integrity-session.ts` is pure state manipulation — no network, no
