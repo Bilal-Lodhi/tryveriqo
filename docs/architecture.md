@@ -272,8 +272,20 @@ Three rules keep the bound from redefining anything:
 **Partial recovery is disclosed.** Rebuilding a projection from the store replays
 the events that were fetched, and `GET_SESSION_REVIEW` returns at most
 `eventLimit` of them. When that page was truncated the projection records
-`recoveredPartially`, so an undercounted reconstruction is visible rather than
-presented as exact.
+`recoveredPartially`, so a partial window is visible rather than presented as
+complete.
+
+**Recovered counters come from exact counts, not the replay.** `shouldAnalyze`
+reads counters, and a replay can only reconstruct the counters of the page it was
+given — so a long session would come back undercounted and fail to trip a
+threshold it had crossed. The recovery path therefore asks the tool for
+`includeEventCounts`, which runs one `$group` by `eventType` over all stored
+telemetry, and `hydrateFromPersisted` overwrites its counters with those totals
+after the replay has built the windows and the code snapshot. `countersExact`
+records whether that happened.
+
+The aggregation is **opt-in** because the cohort list calls this tool once per
+session and does not need it; only recovery pays for it.
 
 **Code-hash guard.** After an analysis, the SHA-256 of the analysed code is
 retained. Further batches with byte-identical code reuse the previous report

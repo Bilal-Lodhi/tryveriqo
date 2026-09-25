@@ -173,11 +173,24 @@ What this does **not** affect:
 sizes (`retainedEvents`, `retainedKeystrokes`, `retainedPastes`), so an operator
 can see both.
 
-**Recovery from a truncated page is disclosed.** When a session is rebuilt from the
-store, its counters are reconstructed from the events that were fetched. If that
-page was itself truncated — `GET_SESSION_REVIEW` returns at most `eventLimit`
-events — the projection sets `recoveredPartially: true` and logs how many of how
-many events it used. It does **not** present a partial reconstruction as exact.
+**Recovery takes its counters from exact stored counts.** When a session is rebuilt
+from the store, its retained windows and code snapshot come from replaying the
+fetched events, but its **counters come from a per-type aggregation** over all
+stored telemetry. Replaying a page could only ever reconstruct that page's
+counters, and those counters feed `shouldAnalyze` — so without this a long session
+could fail to trip a threshold it had crossed.
+
+Two fields make the state of a recovered projection explicit:
+
+| Field | Meaning |
+| --- | --- |
+| `recoveredPartially` | The retained **window** was rebuilt from a partial page |
+| `countersExact` | The counters that feed thresholds are true totals |
+
+`countersExact` is `false` only when the store did not supply counts — a
+page-derived projection, which logs `counters are rebuilt from the recovered
+subset and may undercount`. A fresh (non-recovered) projection is always exact,
+because it accumulates real totals as it goes.
 
 ### Session review paging
 

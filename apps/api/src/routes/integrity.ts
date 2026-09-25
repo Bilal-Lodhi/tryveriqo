@@ -321,7 +321,10 @@ async function resolveSession(
   }
 
   // Recovery path: is this a session that already exists in the store?
-  const review = await fetchSessionReview(mcp, sessionId);
+  // Exact per-type counts are requested because a projection rebuilt from a page
+  // would otherwise carry page-derived counters, and those feed the analysis
+  // thresholds — so a long session could fail to trip a threshold it has crossed.
+  const review = await fetchSessionReview(mcp, sessionId, { includeEventCounts: true });
 
   if (!review.ok) {
     // The store is unreachable. Creating an in-memory projection would silently
@@ -363,13 +366,16 @@ async function resolveSession(
       },
       events: storedEvents,
       recoveredPartially: review.data.eventsTruncated ?? false,
+      ...(review.data.eventCounts ? { eventCounts: review.data.eventCounts } : {}),
     });
 
     if (recovered.recoveredPartially) {
       log(
         `[integrity] [${requestId}] Session ${sessionId} recovered from a truncated page ` +
           `(${storedEvents.length} of ${review.data.eventTotal ?? "unknown"} stored events); ` +
-          "counters are rebuilt from the recovered subset.",
+          (recovered.countersExact
+            ? "counters taken from exact stored counts."
+            : "counters are rebuilt from the recovered subset and may undercount."),
       );
     }
 
@@ -475,6 +481,7 @@ function sessionSummary(session: SessionState): Record<string, unknown> {
     submitted: session.submitted,
     recoveredFromStore: session.recoveredFromStore,
     recoveredPartially: session.recoveredPartially,
+    countersExact: session.countersExact,
     lastIntegrityReport: session.lastIntegrityReport,
   };
 }

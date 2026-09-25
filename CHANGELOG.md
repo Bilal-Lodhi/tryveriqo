@@ -66,6 +66,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+* **Recovered session counters were page-derived, so thresholds could
+  under-trigger.** Rebuilding a projection replays the events the store returned,
+  and `get_session_review` returns at most one page — so for a session longer than
+  a page the reconstructed `pasteCount`, `tabSwitchCount`, `windowBlurCount`,
+  `fullscreenExitCount`, `copyAttemptCount` and `devToolsOpenCount` described the
+  page, not the record. Those counters feed `shouldAnalyze`, so a long session
+  could fail to cross a threshold it had in fact crossed. Recovery now asks the
+  tool for `includeEventCounts` — one `$group` by `eventType` over all stored
+  telemetry, opt-in so the cohort list does not pay for it — and overwrites the
+  replayed counters with those exact totals. A `countersExact` field records
+  whether that happened, and is `false` only when the store supplied no counts.
 * **The in-memory session projection grew without bound.** `SessionState.events`
   and `keystrokeDeltas` were appended on every applied event and never trimmed, so
   an authenticated candidate could grow one session's footprint indefinitely —
