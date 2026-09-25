@@ -324,11 +324,47 @@ so every call silently fell back to a different model. Do not reintroduce it.
 | `SESSION_TTL_SECONDS` | `7200` | Live-projection staleness horizon; `0` disables eviction |
 | `MAX_PASTE_EVENTS` | `5` | Paste events in a session before analysis is triggered |
 | `MIN_HUMAN_KEYSTROKE_MS` | `80` | Keystrokes faster than this count as implausible |
-| `PLAGIARISM_THRESHOLD` | `0.75` | Similarity above which the report raises a concern |
+| `PLAGIARISM_THRESHOLD` | `0.75` | Similarity at or above which an advisory flag is added |
 | `ALERT_SCORE_THRESHOLD` | `50` | Integrity score above which an alert is raised |
 
 Raising `MAX_PASTE_EVENTS` or `ALERT_SCORE_THRESHOLD` makes the system quieter;
 lowering them makes it noisier. Neither changes whether a signal is *true*.
+
+#### What the similarity report compares against
+
+The report has a settled structure, but it needs something to compare against or
+"similarity" means similarity to nothing. The source is the **stored assessment's
+own reference solution**: a generated suite carries `expectedAnswer` and often
+`starterCode` per problem, and the suite is already persisted.
+
+To make that work, a session's `assessmentId` must name the stored suite's
+`suiteId` — which is what happens when the operator generates a suite and issues
+it under its own id.
+
+| Field | Meaning |
+| --- | --- |
+| `plagiarismReport.source.kind` | `assessment-solution`, or `none` |
+| `source.suiteId` / `source.problemId` | Exactly what was compared |
+| `source.count` | How many reference strings were supplied |
+| `source.reason` | Why there are none, when there are none |
+
+Bounded by construction: at most 3 reference strings and 20,000 characters total,
+so the provider request and the analysis cost stay predictable.
+
+**Why not cross-candidate comparison.** Comparing one candidate's submission
+against another's is the obvious alternative, and it was deliberately **not**
+chosen: the model can echo a matched snippet into `plagiarismReport`, which is
+returned to the candidate's own review — so a cross-candidate corpus would leak
+one candidate's code to another. The assessment's own solution has the same
+comparison value with none of that exposure. Nothing here scrapes, crawls, calls a
+third party, or uses an external vector store.
+
+**`PLAGIARISM_THRESHOLD` is now enforced.** Similarity at or above it adds a
+`SIMILARITY_ABOVE_THRESHOLD` flag. That flag is **informational**: the model's own
+`overallScore` is left exactly as produced, so this cannot change a session's
+status or trip `ALERT_SCORE_THRESHOLD` on its own. Its wording states the
+measurement and refuses the conclusion — a correct, idiomatic solution can
+resemble the reference without any copying, and the product never claims otherwise.
 
 #### What `SESSION_TTL_SECONDS` does and does not do
 
