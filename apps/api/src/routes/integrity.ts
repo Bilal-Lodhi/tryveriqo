@@ -97,7 +97,10 @@ export function integrityRoutes(deps: ApiDependencies): Hono<AppEnv> {
     // ── Resolve or recover the session projection ────────────────
     const resolution = await resolveSession(sessionId, events, deps, requestId);
     if (!resolution.ok) {
-      return c.json({ success: false, error: resolution.error, correlationId: requestId }, 502);
+      return c.json(
+        { success: false, error: resolution.error, correlationId: requestId },
+        resolution.forbidden ? 403 : 502,
+      );
     }
     const session = resolution.session;
 
@@ -271,12 +274,33 @@ export function integrityRoutes(deps: ApiDependencies): Hono<AppEnv> {
 
 type Resolution =
   | { ok: true; session: SessionState }
-  | { ok: false; error: string };
+  | { ok: false; error: string; forbidden?: boolean };
+
+/**
+ * A batch may only be folded into a session that the batch's own candidate owns.
+ *
+ * This is both an authorization boundary and a data-integrity one. The
+ * authorization half stops a candidate writing into another candidate's record;
+ * the integrity half stops *any* caller — including the operator — from writing
+ * events attributed to one candidate into a session owned by another, which
+ * would corrupt that session's timeline and its stored code snapshot.
+ *
+ * The message is deliberately identical to the "wrong session" case so the
+ * response is not an oracle for which session ids exist.
+ */
+const FOREIGN_SESSION: Resolution = {
+  ok: false,
+  forbidden: true,
+  error: "Not authorised to submit telemetry for this session.",
+};
 
 /**
  * Returns the live projection for a session, creating it when the session is
  * genuinely new and recovering it from the persisted record when this process
  * has simply never seen it (for example after a restart).
+ *
+ * Ownership is checked before the projection is created, cached or recovered, so
+ * a foreign session is never loaded into this process's registry either.
  */
 async function resolveSession(
   sessionId: string,
@@ -286,10 +310,13 @@ async function resolveSession(
 ): Promise<Resolution> {
   const { mcp, sessions, log } = deps;
 
-  const existing = sessions.get(sessionId);
-  if (existing) return { ok: true, session: existing };
-
   const seedEvent = events[0]!;
+
+  const existing = sessions.get(sessionId);
+  if (existing) {
+    if (existing.candidateId !== seedEvent.candidateId) return FOREIGN_SESSION;
+    return { ok: true, session: existing };
+  }
 
   // Recovery path: is this a session that already exists in the store?
   const review = await fetchSessionReview(mcp, sessionId);
@@ -304,6 +331,8 @@ async function resolveSession(
   }
 
   if (review.data?.session) {
+    if (review.data.session.candidateId !== seedEvent.candidateId) return FOREIGN_SESSION;
+
     const storedEvents = (review.data.events ?? []).map((event) => ({
       eventId: "",
       sessionId,

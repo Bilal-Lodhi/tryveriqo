@@ -53,8 +53,11 @@ protected assets are:
 * **Sensitive routes are protected.** Session listing, session review, candidate
   reports, session termination and assessment generation require a credential.
 * **Candidate credentials are scoped.** A candidate token is an HMAC-signed,
-  short-lived token confined to one `candidateId`; a candidate cannot read
-  another candidate's data or enumerate the cohort.
+  short-lived token confined to one `candidateId`. Ingestion accepts a batch
+  naming only that candidate, refuses a batch attributed to anyone else, and
+  refuses a session owned by anyone else — so a candidate cannot write into
+  another candidate's record. A candidate cannot enumerate the cohort or review a
+  foreign session.
 * **Constant-time comparison** is used for the operator token and for token
   signatures.
 * **No wildcard production CORS.** Origins are an explicit allow-list.
@@ -78,13 +81,15 @@ protected assets are:
   injects the credential server-side. See
   [docs/configuration.md](docs/configuration.md#console-operator-token).
 * **Open candidate registration.** `POST /api/v1/identity/set` accepts any
-  `candidateId` from any caller and mints a token scoped to exactly that id. This
-  is a documented v0.1.0 limitation rather than an authorisation bug: the token
-  grants access to that identity's own session data and nothing else, and
-  cross-candidate reads and writes are refused with `403`. The residual risk is
-  pre-registration hijack of an id an operator intended for someone else, which a
-  deployment with untrusted candidates must close at the edge. See
-  [docs/security/threat-model.md](docs/security/threat-model.md).
+  `candidateId` from any caller and mints a token scoped to exactly that id, with
+  no check that the id is unused. A token cannot be widened to reach a third
+  party, and cross-candidate writes are refused with `403`. The residual is a
+  **read** exposure: a token for a known candidate id grants access to that
+  candidate's own session reviews, submitted code and integrity reports, and can
+  submit telemetry attributed to them. That is stronger than hijacking an unused
+  id, and a deployment with untrusted candidates must close it at the edge before
+  issuing a token. See
+  [docs/security/threat-model.md](docs/security/threat-model.md) and issue #2.
 * **Denial of service against a self-hosted instance.** In-process rate limiting
   exists to bound accidental amplification, not to withstand a determined
   attacker. Put an edge limiter in front of a public deployment.

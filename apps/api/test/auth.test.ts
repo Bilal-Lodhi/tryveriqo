@@ -251,6 +251,115 @@ describe("candidate credential is confined to its own assessment data", () => {
   });
 });
 
+describe("cross-candidate telemetry isolation", () => {
+  test("a batch may not attribute events to a second candidate", async () => {
+    // Only events[0] used to be checked, so a candidate could smuggle events
+    // attributed to someone else by putting their own event first.
+    const { app, mcp } = makeApp();
+    const response = await postJson(
+      app,
+      "/api/v1/integrity/ingest",
+      {
+        events: [
+          telemetryEvent({ candidateId: "attacker" }),
+          telemetryEvent({ candidateId: "victim", eventType: "PASTE_TRIGGER", payload: { pasteContent: "forged" } }),
+        ],
+      },
+      candidateToken("attacker"),
+    );
+
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as { error: string };
+    assert.match(body.error, /same candidate/i);
+    assert.equal(
+      mcp.callsFor(MCP_TOOLS.INGEST_MICRO_EVENTS).length,
+      0,
+      "a mixed-candidate batch must never reach storage",
+    );
+  });
+
+  test("a candidate cannot ingest into another candidate's session", async () => {
+    // session-1 belongs to candidate-1 in this harness.
+    const { app, mcp } = makeApp();
+    const response = await postJson(
+      app,
+      "/api/v1/integrity/ingest",
+      { events: [telemetryEvent({ sessionId: "session-1", candidateId: "candidate-2" })] },
+      candidateToken("candidate-2"),
+    );
+
+    assert.equal(response.status, 403);
+    assert.equal(mcp.callsFor(MCP_TOOLS.INGEST_MICRO_EVENTS).length, 0);
+  });
+
+  test("a foreign session's code snapshot is never rewritten", async () => {
+    const { app, mcp } = makeApp();
+    await postJson(
+      app,
+      "/api/v1/integrity/ingest",
+      {
+        events: [
+          telemetryEvent({
+            sessionId: "session-1",
+            candidateId: "candidate-2",
+            eventType: "PASTE_TRIGGER",
+            payload: { pasteContent: "injected into someone else's record" },
+          }),
+        ],
+      },
+      candidateToken("candidate-2"),
+    );
+
+    assert.equal(
+      mcp.callsFor(MCP_TOOLS.UPDATE_SESSION_CODE).length,
+      0,
+      "another candidate's stored submission must not be overwritten",
+    );
+  });
+
+  test("the operator cannot write events into a differently-owned session", async () => {
+    // Not an authorization question for an operator, but a data-integrity one:
+    // a batch that names a candidate who does not own the session would corrupt
+    // that session's record.
+    const { app, mcp } = makeApp();
+    const response = await postJson(
+      app,
+      "/api/v1/integrity/ingest",
+      { events: [telemetryEvent({ sessionId: "session-1", candidateId: "candidate-9" })] },
+      TEST_API_TOKEN,
+    );
+
+    assert.equal(response.status, 403);
+    assert.equal(mcp.callsFor(MCP_TOOLS.INGEST_MICRO_EVENTS).length, 0);
+  });
+
+  test("a candidate can still ingest into their own session", async () => {
+    const { app, mcp } = makeApp();
+    const response = await postJson(
+      app,
+      "/api/v1/integrity/ingest",
+      { events: [telemetryEvent({ sessionId: "session-1", candidateId: "candidate-1" })] },
+      candidateToken("candidate-1"),
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(mcp.callsFor(MCP_TOOLS.INGEST_MICRO_EVENTS).length, 1);
+  });
+
+  test("the operator can still ingest for the session's real owner", async () => {
+    const { app, mcp } = makeApp();
+    const response = await postJson(
+      app,
+      "/api/v1/integrity/ingest",
+      { events: [telemetryEvent({ sessionId: "session-1", candidateId: "candidate-1" })] },
+      TEST_API_TOKEN,
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(mcp.callsFor(MCP_TOOLS.INGEST_MICRO_EVENTS).length, 1);
+  });
+});
+
 describe("candidate session tokens", () => {
   test("a tampered payload fails signature verification", async () => {
     const { app } = makeApp();

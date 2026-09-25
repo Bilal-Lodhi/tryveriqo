@@ -63,31 +63,57 @@ limiter in front of a public deployment.
 candidate's review.
 
 **Mitigation.** Candidate tokens are HMAC-SHA256 signed over a payload carrying
-the `candidateId`, verified in constant time, and expire. Ingestion compares the
-token's `candidateId` against the event's and returns `403` on mismatch. Session
-review resolves the owning candidate from the stored session, not from the
-request, and refuses a candidate whose token does not own it. Verified by tests
-for both directions.
+the `candidateId`, verified in constant time, and expire. Ingestion enforces
+three separate rules, because checking any one of them alone is not enough:
+
+1. **One candidate per batch.** `validateIngestRequest` refuses a batch whose
+   events name more than one `candidateId`, so a caller cannot smuggle events
+   attributed to someone else behind a first event of their own. This is an
+   authorization boundary, not a tidiness rule — the route decides who a batch
+   belongs to from the batch itself.
+2. **The batch must match the token.** Ingestion compares the token's
+   `candidateId` against the batch's and returns `403` on mismatch.
+3. **The batch must own the session.** A batch may only be folded into a session
+   whose stored owner is that same candidate, checked before the projection is
+   created, cached or recovered. This is a data-integrity rule as much as an
+   authorization one: without it any caller, including the operator, could write
+   events attributed to one candidate into a session owned by another — and have
+   that content written into the other candidate's stored code snapshot.
+
+Session review resolves the owning candidate from the stored session, not from
+the request, and refuses a candidate whose token does not own it. Verified by
+tests for every direction, including the mixed-batch and foreign-session cases.
 
 **Residual.** Registration is unauthenticated by design: `POST
-/api/v1/identity/set` accepts any `candidateId`. A caller can therefore claim any
-candidate id and submit *telemetry* attributed to it. What that does **not** grant
-is access to anyone else's data: the minted token is scoped to the id the caller
-supplied, and every candidate route compares the token's `candidateId` against the
-resource's owner, so cross-candidate reads and writes are refused with `403`. The
-concrete risk is *pre-registration hijack*: if an operator pre-assigns a candidate
-id to a real person, whoever claims that id first can submit telemetry under it and
-pollute that candidate's record. This is a real, accepted limitation of a
-self-hosted v0.1.0 — see "Accepted risks" below.
+/api/v1/identity/set` accepts any `candidateId`, with no check that the id is
+unused. The minted token is scoped to the id the caller supplied, and every
+candidate route compares the token's `candidateId` against the resource's owner,
+so a token cannot be *widened* to reach a third party.
+
+What it does mean is that **claiming an existing candidate id yields a token that
+can read that candidate's own data** — their session reviews, submitted code and
+integrity reports — and can submit telemetry attributed to them. This is stronger
+than "pre-registration hijack of an unused id": the id need not be unused, and
+the exposure is read as well as write. An attacker must still know the candidate
+id, and a *foreign* session id is refused by rule 3 above, but no eligibility
+check stands between a known candidate id and that candidate's record.
+
+A deployment with untrusted candidates must therefore verify identity at the
+edge before issuing a token, or front `POST /api/v1/identity/set` with a
+proof-of-assessment bootstrap. This is a real, accepted limitation of a
+self-hosted v0.1.0 — see "Accepted risks" below, and issue #2.
 
 ### T4 — Telemetry forgery to manufacture suspicion
 
 **Threat.** A candidate submits fabricated paste or tab-switch events to inflate
 another candidate's integrity score, or to test which thresholds trip.
 
-**Mitigation.** Cross-candidate attribution is blocked (T3). Ingestion caps batch
-size at 500 events and truncates free-text fields at 20,000 characters, so a
-single request cannot exhaust storage.
+**Mitigation.** Cross-candidate attribution is blocked by the three ingestion
+rules in T3: a batch names one candidate, that candidate must match the token,
+and the batch must own the target session. Forged events can therefore only
+pollute the submitting candidate's *own* record. Ingestion caps batch size at
+500 events and truncates free-text fields at 20,000 characters, so a single
+request cannot exhaust storage.
 
 **Residual.** Nothing binds a telemetry event to the candidate's actual browser.
 The client is trusted with respect to *its own* session. Integrity signals are
@@ -211,13 +237,16 @@ security one.
 
 These are deliberate, documented limitations of a self-hosted v0.1.0:
 
-1. **Open candidate registration.** Any caller can register any `candidateId` and
-   receive a valid token for it. Candidate tokens scope *telemetry submission*,
-   not eligibility, so this grants no access to another candidate's data — but it
-   does allow pre-registration hijack of an id an operator intended for someone
-   else. A deployment with untrusted candidates must verify identity at the edge
-   before issuing a token, or front `POST /api/v1/identity/set` with a
-   proof-of-assessment bootstrap.
+1. **Open candidate registration.** Any caller can register any `candidateId` —
+   used or unused — and receive a valid token for it. Candidate tokens scope
+   *telemetry submission and that candidate's own data*, not eligibility. A token
+   cannot be widened to reach a third party, and a foreign session id is refused,
+   but claiming a **known** candidate id yields a token that can read that
+   candidate's session reviews, submitted code and integrity reports, and submit
+   telemetry attributed to them. A deployment with untrusted candidates must
+   verify identity at the edge before issuing a token, or front
+   `POST /api/v1/identity/set` with a proof-of-assessment bootstrap. Tracked as
+   issue #2; the registration model itself is a product decision, not a bug fix.
 2. **Single shared operator credential.** No per-reviewer identity, no RBAC, no
    audit log of who read what.
 3. **Console token in the bundle.** Documented in `SECURITY.md` and in the
