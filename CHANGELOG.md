@@ -4,6 +4,45 @@ All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+* **Cross-candidate telemetry injection.** Ingestion decided who a batch belonged
+  to from its first event alone, while the validator allowed a batch to carry
+  events naming different candidates. A caller could therefore send their own
+  event first and a victim-attributed event second: the batch was accepted, the
+  forged event was persisted, and its content was written into the victim
+  session's stored code snapshot. A batch must now name exactly one candidate.
+* **Ingestion never checked session ownership.** Any caller holding a known
+  `sessionId` could write into that session regardless of the events'
+  `candidateId`. A batch is now refused unless the session's stored owner is that
+  same candidate, checked before the projection is created, cached or recovered.
+  This is a data-integrity rule as well as an authorization one: it also stops
+  the operator writing events attributed to one candidate into another
+  candidate's session.
+* **`SESSION_TTL_SECONDS` was inert.** The documented session staleness horizon
+  had no consumer anywhere in the source. It is now the enforced horizon for the
+  API's in-memory session projection; the durable session, its telemetry and its
+  reports are never deleted by it, and the documentation now says so explicitly.
+* **Recovery lost settled state.** A session recovered from its stored record
+  carried the persisted `submitted` status but not the `submitted` flag, so
+  `shouldAnalyze` treated an already-final answer as live and spent a fresh paid
+  model call re-analysing it. Recovery also discarded the last analysis, so
+  unchanged code was re-analysed after every recovery.
+* **A refused session termination dropped live state.** `DELETE
+  /api/v1/integrity/sessions/:sessionId` removed the in-memory projection before
+  checking whether the store accepted the delete, so a `502` silently discarded
+  the live view of a session that still existed.
+
+### Changed
+
+* Threat model T3/T4, `SECURITY.md`, the README and the release checklist now
+  state the residual of open candidate registration accurately: cross-candidate
+  *writes* are refused, but a token for a **known** candidate id still grants read
+  access to that candidate's own reviews, submitted code and integrity reports.
+  The previous wording claimed this granted no access to another candidate's data.
+
 ## [0.1.0] — 2026-09-23
 
 The first independent release of tryveriqo, published as a **pre-release** at

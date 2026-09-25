@@ -93,7 +93,7 @@ Accepted v0.1.0 boundaries. Documented so they are decisions, not omissions. See
 
 | # | Item | Rationale |
 | --- | --- | --- |
-| C1 | Candidate registration remains unauthenticated | Tracked as issue #2. It grants no access to another candidate's data; the residual is pre-registration hijack, which a deployment with untrusted candidates must close at the edge |
+| C1 | Candidate registration remains unauthenticated | Tracked as issue #2. Cross-candidate *writes* are refused (one candidate per batch, must match the token, must own the session), but claiming a known candidate id still yields read access to that candidate's own reviews, code and reports — a deployment with untrusted candidates must close it at the edge |
 | C2 | Operator token compiled into the Flutter web bundle | Tracked as issue #3. Documented as a deployment constraint with acceptable and unacceptable patterns; fixing it properly needs a reverse proxy or a different auth model |
 | C3 | Single shared operator credential, no per-reviewer identity or audit log | Would require an accounts/RBAC design that is out of scope for a v0.1.0 pre-release |
 | C4 | No load, stress or denial-of-service testing | In-process rate limits are documented as a backstop, not a hardened defence |

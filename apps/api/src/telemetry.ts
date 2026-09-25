@@ -111,8 +111,14 @@ function normaliseTimestamp(raw: unknown): string {
 }
 
 /**
- * Validates an ingestion body. All events must belong to one session, because
- * the in-memory projection and the alert threshold are per-session.
+ * Validates an ingestion body. All events must belong to one session and one
+ * candidate, because the in-memory projection, the alert threshold and the
+ * authorization decision are all per-session and per-candidate.
+ *
+ * The single-candidate rule is an authorization boundary, not a tidiness rule:
+ * the route decides who a batch belongs to from the batch itself, so a batch
+ * that named two candidates could be used to attribute forged events to someone
+ * else.
  */
 export function validateIngestRequest(body: unknown): EventValidation {
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
@@ -132,6 +138,7 @@ export function validateIngestRequest(body: unknown): EventValidation {
 
   const events: MicroEvent[] = [];
   let sessionId: string | null = null;
+  let candidateId: string | null = null;
 
   for (let index = 0; index < rawEvents.length; index += 1) {
     const raw = rawEvents[index];
@@ -154,9 +161,18 @@ export function validateIngestRequest(body: unknown): EventValidation {
       };
     }
 
-    const candidateId = requireNonEmptyString(source, "candidateId");
-    if (!candidateId) {
+    const candidateIdValue = requireNonEmptyString(source, "candidateId");
+    if (!candidateIdValue) {
       return { ok: false, error: "Each event requires a non-empty 'candidateId'.", index };
+    }
+    if (candidateId === null) {
+      candidateId = candidateIdValue;
+    } else if (candidateId !== candidateIdValue) {
+      return {
+        ok: false,
+        error: "All events in one batch must belong to the same candidate.",
+        index,
+      };
     }
 
     const assessmentId = requireNonEmptyString(source, "assessmentId");
@@ -175,7 +191,7 @@ export function validateIngestRequest(body: unknown): EventValidation {
     events.push({
       eventId: requireNonEmptyString(source, "eventId") ?? crypto.randomUUID(),
       sessionId: eventSessionId,
-      candidateId,
+      candidateId: candidateIdValue,
       assessmentId,
       problemId: requireNonEmptyString(source, "problemId") ?? "",
       eventType: source["eventType"],

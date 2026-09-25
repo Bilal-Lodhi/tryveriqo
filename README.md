@@ -211,11 +211,13 @@ The values that matter most:
   See [docs/configuration.md](docs/configuration.md#console-operator-token) and
   [docs/security/threat-model.md](docs/security/threat-model.md).
 * **Candidate registration is open.** `POST /api/v1/identity/set` accepts any
-  `candidateId` from any caller. This is a documented v0.1.0 limitation, not an
-  authorisation bug: the token it mints is scoped to the `candidateId` the caller
-  supplied, so it grants access to that identity's own session data only. A
-  caller cannot use it to read or write another candidate's data. See
-  [Known limitations](#known-limitations).
+  `candidateId` from any caller, with no check that the id is unused. A token
+  cannot be widened to reach a third party: telemetry ingestion requires the
+  batch to name one candidate, to match the token, and to own the target session,
+  and review resolves the owner from the stored session. But claiming a **known**
+  candidate id does yield a token that can read that candidate's own session
+  reviews, submitted code and integrity reports. See
+  [Known limitations](#known-limitations) and issue #2.
 * There is **no default credential**. Development mode generates ephemeral
   credentials and prints the operator token once; production refuses to start
   without secrets.
@@ -259,11 +261,15 @@ These are deliberate v0.1.0 boundaries. They are documented rather than hidden.
 
 1. **Candidate registration is unauthenticated.** Any caller may call
    `POST /api/v1/identity/set` with a `candidateId` of their choosing and receive
-   a token scoped to exactly that id. The token cannot read or write another
-   candidate's data — cross-candidate access is refused with `403` — but a caller
-   can claim an unused identity. Deployments that need registration control
-   should front the endpoint with their own bootstrap check. See
-   [docs/security/threat-model.md](docs/security/threat-model.md).
+   a token scoped to exactly that id, with no check that the id is unused. A
+   token cannot reach a *third* party, and a batch cannot be attributed to a
+   candidate who does not own the target session, so cross-candidate writes are
+   refused with `403`. What remains is a read exposure: a token for a **known**
+   candidate id can read that candidate's own reviews, submitted code and
+   integrity reports, and submit telemetry attributed to them. Deployments with
+   untrusted candidates should front the endpoint with their own bootstrap check.
+   See [docs/security/threat-model.md](docs/security/threat-model.md) and issue
+   #2.
 2. **The console operator token is embedded in the web bundle.** Safe for a
    local/trusted operator console only; not for a publicly served static build.
    See [Privacy and security warning](#privacy-and-security-warning).

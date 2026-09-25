@@ -173,6 +173,33 @@ not. The product behaviour was not weakened.
 The last row is a documented limitation, not a defect: see
 [configuration.md](../configuration.md#console-operator-token).
 
+### Correction: what the cross-candidate rows above did and did not cover
+
+The live workflow verified cross-candidate rejection for the **single-event,
+same-candidate** shape only. Two gaps survived it, and both were real:
+
+* Ingestion decided who a batch belonged to from `events[0]` alone, while the
+  validator allowed a batch to carry events naming **different** candidates. A
+  two-event batch — the caller's own event first, a victim-attributed event
+  second — was accepted, persisted, and its content written into the victim
+  session's stored code snapshot. The row "Candidate cannot ingest for another
+  candidate" was therefore true of the shape that was tested and false of the
+  shape that was not.
+* Ingestion never compared the session's stored owner against the caller at all,
+  so any caller holding a known `sessionId` could write into that session
+  regardless of the events' `candidateId`. No row above covered this.
+
+Both are fixed, with regression tests for the mixed-candidate batch, the foreign
+session, the foreign code snapshot, and the operator writing into a
+differently-owned session. The enforced rules are now stated in
+[threat-model.md](../security/threat-model.md) (T3). A batch names exactly one
+candidate, that candidate must match the token, and the batch must own the
+session — checked before the projection is created, cached or recovered.
+
+The read-side residual is unchanged and still real: registration is
+unauthenticated, so a known candidate id yields a token that can read that
+candidate's own data. That is issue #2.
+
 ## Dependency and licence audit
 
 Recorded in full in [NOTICE](../../NOTICE). Summary:
