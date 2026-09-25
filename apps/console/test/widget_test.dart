@@ -10,6 +10,31 @@ import 'package:tryveriqo_console/providers/integrity_provider.dart';
 import 'package:tryveriqo_console/providers/review_provider.dart';
 import 'package:tryveriqo_console/providers/theme_provider.dart';
 import 'package:tryveriqo_console/services/api_client.dart';
+import 'package:tryveriqo_console/widgets/generate_panel.dart';
+
+/// An [ApiService] whose generation result is fixed, so the panel can be driven
+/// through every outcome without a server.
+class _StubApi extends ApiService {
+  _StubApi(this.result) : super(baseUrl: 'http://127.0.0.1:1');
+
+  final GenerateResult result;
+
+  @override
+  Future<GenerateResult> generateSuite(
+    String prompt, {
+    required int problemCount,
+    required String roleContext,
+    String? generationRequestId,
+  }) async => result;
+}
+
+Map<String, dynamic> _suiteWith({
+  required int problems,
+  String id = 'suite-1',
+}) => {
+  'metadata': {'suiteId': id},
+  'problems': List.generate(problems, (index) => {'problemId': 'p-$index'}),
+};
 
 Widget wrap(ApiService api) {
   return MultiProvider(
@@ -22,6 +47,24 @@ Widget wrap(ApiService api) {
     ],
     child: AssessmentConsoleApp(api: api),
   );
+}
+
+/// Drives the generate panel to a result and returns its rendered text.
+Future<String> generateWith(WidgetTester tester, GenerateResult result) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(body: GeneratePanel(api: _StubApi(result))),
+    ),
+  );
+
+  await tester.enterText(find.byType(TextField).first, 'A backend assessment');
+  await tester.tap(find.text('Generate assessment'));
+  await tester.pumpAndSettle();
+
+  return tester
+      .widgetList<Text>(find.byType(Text))
+      .map((text) => text.data ?? '')
+      .join('\n');
 }
 
 void main() {
@@ -93,6 +136,118 @@ void main() {
     expect(find.text('Review console'), findsOneWidget);
     expect(find.text('Review'), findsOneWidget);
     expect(find.text('Generate'), findsOneWidget);
+  });
+
+  group('generation outcome reporting', () {
+    testWidgets('a persisted suite is reported as saved', (tester) async {
+      final text = await generateWith(
+        tester,
+        GenerateResult(
+          suite: _suiteWith(problems: 3),
+          success: true,
+          persisted: true,
+        ),
+      );
+
+      expect(text, contains('Generated 3 problem(s)'));
+      expect(text, contains('suite-1'));
+      expect(text, contains('saved and can be issued'));
+    });
+
+    testWidgets('an unpersisted suite never claims it was saved', (
+      tester,
+    ) async {
+      // The defect this replaced: the panel said "The suite was persisted for
+      // issue to candidates" whenever a suite came back, so an operator would
+      // issue an assessment that does not exist in the store.
+      final text = await generateWith(
+        tester,
+        GenerateResult(
+          suite: _suiteWith(problems: 2),
+          success: true,
+          persisted: false,
+        ),
+      );
+
+      expect(text, contains('NOT saved'));
+      expect(text, contains('cannot be issued to candidates'));
+      expect(
+        text.contains('was saved and can be issued'),
+        isFalse,
+        reason: 'an unpersisted suite must never be described as saved',
+      );
+      expect(text.contains('was persisted'), isFalse);
+    });
+
+    testWidgets('a cancelled generation is not reported as a success', (
+      tester,
+    ) async {
+      // The API answers 200 with success:false for a client-cancelled request.
+      final text = await generateWith(
+        tester,
+        const GenerateResult(cancelled: true, error: 'cancelled'),
+      );
+
+      expect(text, contains('cancelled'));
+      expect(text, contains('Nothing was generated'));
+      expect(text.contains('Generated 0 problem'), isFalse);
+      expect(
+        text.contains('saved and can be issued'),
+        isFalse,
+        reason: 'a cancelled request must not claim the suite was saved',
+      );
+    });
+
+    testWidgets('a success without a suite is treated as a failure', (
+      tester,
+    ) async {
+      final text = await generateWith(
+        tester,
+        const GenerateResult(success: true, persisted: false),
+      );
+
+      expect(text, contains('did not return a suite'));
+      expect(
+        text.contains('saved and can be issued'),
+        isFalse,
+        reason: 'a response with no suite must not claim anything was saved',
+      );
+    });
+
+    testWidgets('an explicit error is surfaced verbatim', (tester) async {
+      final text = await generateWith(
+        tester,
+        const GenerateResult(error: 'The assessment provider is unavailable.'),
+      );
+
+      expect(text, contains('The assessment provider is unavailable.'));
+    });
+
+    testWidgets('a persisted:false response is parsed as unpersisted', (
+      tester,
+    ) async {
+      final parsed = GenerateResult.fromJson({
+        'success': true,
+        'persisted': false,
+        'suite': _suiteWith(problems: 1),
+      });
+
+      expect(parsed.success, isTrue);
+      expect(parsed.persisted, isFalse);
+      expect(parsed.hasSuite, isTrue);
+    });
+
+    testWidgets('a cancelled response is parsed as cancelled', (tester) async {
+      final parsed = GenerateResult.fromJson({
+        'success': false,
+        'cancelled': true,
+        'error': 'Generation cancelled at the client\'s request.',
+      });
+
+      expect(parsed.cancelled, isTrue);
+      expect(parsed.success, isFalse);
+      expect(parsed.hasSuite, isFalse);
+    });
   });
 
   group('integrity model', () {
