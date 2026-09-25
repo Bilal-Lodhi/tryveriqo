@@ -49,6 +49,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `CANDIDATE_REGISTRATION_MODE=open` restores the old behaviour for local
   development only, and the API now **refuses to start in production** with it.
 
+### Changed
+
+* **The credential guard's verdict is now reproducible.** It walked the working
+  directory, so an untracked local file could fail it locally while CI passed — a
+  guard whose two verdicts differ for the same repository content is one
+  contributors learn to ignore. It now inspects **tracked files** by default
+  (`git ls-files`), which is exactly what CI checks out, with
+  `--include-untracked` available as a clearly-labelled local pre-commit aid that
+  also covers committable-but-uncommitted files. Ignored files stay outside both
+  sets, because an ignored file cannot be published. A `--self-test` mode runs
+  nine deterministic scenarios in a scratch repository and is wired into CI, and
+  the guard now also scans TOML files, with `.gitleaks.toml` exempted by path
+  since it legitimately names the retired identifier as a detection pattern.
+  `CONTRIBUTING.md` documents which set each mode inspects and why.
+
 ### Fixed
 
 * **The in-memory session projection grew without bound.** `SessionState.events`
