@@ -8,6 +8,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+* **The console now refuses to send an embedded operator token to a remote host.**
+  A token passed with `--dart-define=API_TOKEN` is compiled into the web bundle,
+  where anyone who can load the page can read it, and it grants full operator
+  access — every candidate's telemetry, submissions and integrity reports, plus
+  billable generation. The console now withholds it unless `API_BASE_URL` is
+  loopback (`localhost`, `127.x.x.x`, `::1`) or
+  `ALLOW_REMOTE_EMBEDDED_TOKEN=true` is set deliberately, and explains why instead
+  of showing a bare 401. A candidate session token is unaffected. This is a guard
+  against an accidental public deployment, not a secret store: it cannot make an
+  embedded token confidential. A reference reverse-proxy deployment is shipped in
+  `deploy/console-proxy/` — an nginx template that overwrites `Authorization`
+  server-side, plus a Dockerfile that refuses to start without the credential — so
+  a hosted console can be built with no token in the bundle at all.
 * **Rate-limit keys are no longer client-supplied.** The limiter chose its bucket
   from `X-Forwarded-For` / `X-Real-Ip`, which any direct client can set, so
   rotating one header evaded every limit — including the one on unauthenticated

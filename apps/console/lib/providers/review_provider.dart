@@ -31,15 +31,23 @@ class ReviewProvider extends ChangeNotifier {
     try {
       _sessions = await _api.fetchSessions();
     } on ApiException catch (e) {
-      _error = e.isUnauthorised
-          ? 'The console credential was rejected. Supply a valid operator token.'
-          : e.message;
+      _error = e.isUnauthorised ? _authMessage() : e.message;
     } catch (e) {
       _error = 'Failed to load sessions: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Explains an authorization failure without blaming the wrong thing.
+  ///
+  /// A withheld embedded token produces a 401 that looks identical to a wrong
+  /// credential, so say which it is.
+  String _authMessage() {
+    final withheld = _api.embeddedTokenWithheldReason;
+    if (withheld != null) return withheld;
+    return 'The console credential was rejected. Supply a valid operator token.';
   }
 
   Future<void> loadReview(String sessionId) async {
@@ -50,7 +58,7 @@ class ReviewProvider extends ChangeNotifier {
     try {
       _selected = await _api.fetchReview(sessionId);
     } on ApiException catch (e) {
-      _error = e.message;
+      _error = e.isUnauthorised ? _authMessage() : e.message;
     } catch (e) {
       _error = 'Failed to load review: $e';
     } finally {

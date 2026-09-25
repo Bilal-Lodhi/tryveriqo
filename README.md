@@ -273,7 +273,13 @@ These are deliberate v0.1.0 boundaries. They are documented rather than hidden.
    [docs/configuration.md](docs/configuration.md#candidate-registration).
 2. **The console operator token is embedded in the web bundle.** Safe for a
    local/trusted operator console only; not for a publicly served static build.
-   See [Privacy and security warning](#privacy-and-security-warning).
+   The console now **withholds** an embedded token unless `API_BASE_URL` is
+   loopback, or `ALLOW_REMOTE_EMBEDDED_TOKEN=true` is set deliberately, so an
+   accidental public deployment does not silently hand out operator access. For a
+   hosted console, build without `API_TOKEN` and use the reference proxy in
+   [`deploy/console-proxy/`](deploy/console-proxy/README.md), which injects the
+   credential server-side. See
+   [Privacy and security warning](#privacy-and-security-warning).
 3. **Integrity output is advisory.** Flags and scores are signals for a human
    reviewer. Nothing in this system proves that a candidate cheated.
 4. **Reference completions are caller-supplied.** The plagiarism report structure
