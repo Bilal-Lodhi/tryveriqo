@@ -221,15 +221,31 @@ code. Verified by tests.
 
 ### T11 — Denial of service
 
-**Threat.** A client floods ingestion or generation.
+**Threat.** A client floods ingestion or generation, or makes the process buffer
+an unbounded request body.
 
-**Mitigation.** In-process rate limits on the two amplification endpoints; a
-500-event batch cap; field-length truncation; MCP calls are timeout-isolated so a
-slow datastore degrades rather than holds a request open; AI calls have both a
-retry policy and a hard timeout.
+**Mitigation.**
+
+* **Request-body ceilings, per route, applied before anything parses a body.**
+  The unauthenticated `POST /api/v1/identity/set` is the one that matters most:
+  before this existed, any caller on the network could make the process buffer an
+  arbitrarily large body. Registration and capability issuance are capped at
+  16 KiB, generation at 64 KiB, ingestion at 8 MiB, with an 8 MiB backstop for
+  `/api/*`. The ceiling is checked against `Content-Length` when that header is
+  trustworthy and by counting the stream otherwise, so a missing or forged length
+  cannot bypass it. The MCP HTTP transport applies the same treatment.
+* **A batch free-text budget.** The per-field (20,000 characters) and per-batch
+  (500 events) caps previously composed into roughly 30 MB of legitimate content
+  for one request. Free text across a batch is now capped at 500,000 characters,
+  which keeps the documented caps coherent with the body ceiling.
+* In-process rate limits on the two amplification endpoints; a 500-event batch
+  cap; field-length truncation; MCP calls are timeout-isolated so a slow
+  datastore degrades rather than holds a request open; AI calls have both a retry
+  policy and a hard timeout.
 
 **Residual.** Not a hardened DoS defence. A determined attacker can exhaust a
-self-hosted instance.
+self-hosted instance. In-process rate limiting remains a backstop rather than an
+edge control (accepted risk 6), and the rate-limit key is still client-supplied.
 
 ### T12 — Cross-site request forgery and origin abuse
 

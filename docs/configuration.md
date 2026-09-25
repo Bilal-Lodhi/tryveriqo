@@ -71,6 +71,41 @@ token **and** every outstanding registration capability. That is the intended
 lever for ending all candidate sessions at once, or for revoking capabilities
 that were handed out but not yet used.
 
+### Request limits
+
+Every route that accepts a body has a ceiling, applied **before** the body is
+parsed. Registration and capability issuance carry only short strings, so they are
+capped tightly; ingestion legitimately carries a telemetry batch.
+
+| Route | Body ceiling |
+| --- | --- |
+| `POST /api/v1/identity/*` | 16 KiB |
+| `POST /api/v1/generate` | 64 KiB |
+| `POST /api/v1/integrity/ingest` | 8 MiB |
+| any other `/api/*` route (backstop) | 8 MiB |
+
+An oversized body is refused with `413` and the same JSON error shape as every
+other failure. The ceiling is checked against `Content-Length` when that header
+is present, and by counting the stream when it is not, so a missing or forged
+length cannot bypass it. The MCP HTTP transport caps a tool-call body at 8 MiB
+the same way.
+
+The telemetry caps compose as follows, and all three are enforced:
+
+| Limit | Value |
+| --- | --- |
+| Events per batch | 500 |
+| Characters per free-text field (`pasteContent`, `selectedText`, `diffPatch`) | 20,000 |
+| Characters of free text across one batch | 500,000 |
+
+The batch-wide budget exists because the other two together permit far more than
+anyone intended: 500 × 3 × 20,000 characters is roughly 30 MB for a single
+request. Exceeding it is a `400` naming the batch, not a silent truncation.
+
+`POST /api/v1/generate` has **no** prompt-length bound beyond the 64 KiB body
+ceiling, and a generation request reaches a paid model. The ceiling is the
+effective limit today; a tighter per-field bound would be a better one.
+
 ### Candidate registration
 
 Registration is the only unauthenticated write in the API, so it is the one

@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Security
 
+* **Request bodies are bounded.** Nothing capped a request body, and
+  `POST /api/v1/identity/set` is unauthenticated by design, so any caller on the
+  network could make the process buffer an arbitrarily large body. Every route
+  that accepts a body now has a ceiling applied before the body is parsed —
+  16 KiB for identity, 64 KiB for generation, 8 MiB for ingestion, with an 8 MiB
+  backstop for `/api/*` — refused with `413` in the standard error shape. The MCP
+  HTTP transport caps a tool-call body the same way. Free text across one
+  telemetry batch is additionally capped at 500,000 characters, because the
+  per-field and per-batch caps previously composed into roughly 30 MB of
+  legitimate content for a single request.
+* **MCP tool dispatch resolves only declared tools.** `dispatchTool` looked a
+  handler up with a bare property access, so `constructor`, `toString`,
+  `hasOwnProperty`, `__proto__` and friends resolved to `Object.prototype`
+  members and were invoked as though they were tools, returning `200` instead of
+  the `404` the transport owes.
 * **Candidate registration now requires an operator-issued registration
   capability.** `POST /api/v1/identity/set` previously accepted any `candidateId`
   from any caller with no check that the id was unused, so anyone who knew a

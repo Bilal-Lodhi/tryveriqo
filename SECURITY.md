@@ -69,8 +69,12 @@ protected assets are:
 * **No wildcard production CORS.** Origins are an explicit allow-list.
 * **No credentials in logs.** Only credential *presence* is logged, never a
   value — including registration capabilities.
-* **Telemetry is bounded.** Field lengths and batch size are capped on
-  ingestion.
+* **Request bodies are bounded.** Every route that accepts a body has a ceiling
+  applied before the body is parsed, so an unauthenticated caller cannot make the
+  process buffer an arbitrarily large body. The MCP HTTP transport is bounded the
+  same way.
+* **Telemetry is bounded.** Field lengths, free text per batch, and batch size are
+  all capped on ingestion.
 * **The MCP tool surface is separately protected** by `MCP_AUTH_TOKEN`, and in
   production it refuses to start without one.
 

@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 
 import {
   COLLECTIONS,
+  MAX_MCP_BODY_BYTES,
   MCP_TOOLS,
   MCP_TOOL_NAMES,
   MongoStore,
@@ -169,6 +170,39 @@ describe("authenticated tool dispatch over HTTP", () => {
     const result = await callTool(MCP_TOOLS.GET_TEST_SUITE, {}, TOKEN);
     assert.equal(result.status, 400);
     assert.match(String(result.body["error"]), /suiteId/);
+  });
+
+  test("an oversized body is refused with 413 rather than buffered", async () => {
+    // readJsonBody used to concatenate every chunk the socket produced, so a
+    // caller could make the transport buffer an arbitrarily large body.
+    const response = await fetch(`http://127.0.0.1:${port}/tools/${MCP_TOOLS.LIST_SESSIONS}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${TOKEN}`,
+      },
+      body: JSON.stringify({ pad: "x".repeat(MAX_MCP_BODY_BYTES + 1024) }),
+    });
+
+    assert.equal(response.status, 413);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body["success"], false);
+    assert.match(String(body["error"]), /limit of \d+ bytes/);
+  });
+
+  test("an oversized body is refused even without a credential", async () => {
+    // The ceiling must not depend on the caller having authenticated first.
+    const response = await fetch(`http://127.0.0.1:${port}/tools/${MCP_TOOLS.LIST_SESSIONS}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pad: "x".repeat(MAX_MCP_BODY_BYTES + 1024) }),
+    });
+    assert.notEqual(response.status, 200);
+  });
+
+  test("a normal body is unaffected by the ceiling", async () => {
+    const result = await callTool(MCP_TOOLS.LIST_SESSIONS, {}, TOKEN);
+    assert.equal(result.status, 200);
   });
 
   test("a session round-trips through the HTTP transport", async () => {
