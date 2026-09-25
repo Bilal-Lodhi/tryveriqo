@@ -8,17 +8,31 @@ import '../models/identity_model.dart';
 import '../models/integrity.dart';
 
 /// Result of an assessment generation request.
+///
+/// The API can answer `200` with `success: false` — a generation cancelled at the
+/// client's request — and a successful generation can still fail to persist. Both
+/// are carried here so the UI never has to infer an outcome from the absence of an
+/// error.
 class GenerateResult {
   final Map<String, dynamic>? suite;
   final String? generationRequestId;
   final bool cancelled;
   final String? error;
 
+  /// Whether the API reported the request as successful.
+  final bool success;
+
+  /// Whether the generated suite reached the store. `false` means it exists only
+  /// in this response.
+  final bool persisted;
+
   const GenerateResult({
     this.suite,
     this.generationRequestId,
     this.cancelled = false,
     this.error,
+    this.success = false,
+    this.persisted = false,
   });
 
   factory GenerateResult.fromJson(Map<String, dynamic> json) {
@@ -27,8 +41,13 @@ class GenerateResult {
       generationRequestId: json['generationRequestId'] as String?,
       cancelled: json['cancelled'] == true,
       error: json['error'] as String?,
+      success: json['success'] == true,
+      persisted: json['persisted'] == true,
     );
   }
+
+  /// True when there is a suite to show the operator.
+  bool get hasSuite => suite != null;
 }
 
 /// HTTP connectivity layer for the tryveriqo API.

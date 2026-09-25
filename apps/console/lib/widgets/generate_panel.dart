@@ -17,13 +17,18 @@ class GeneratePanel extends StatefulWidget {
   State<GeneratePanel> createState() => _GeneratePanelState();
 }
 
+/// How a generation attempt ended. The panel renders a distinct state for each,
+/// because collapsing them is how a cancelled or unpersisted generation gets
+/// reported as a success.
+enum _Outcome { none, generated, generatedNotPersisted, cancelled, failed }
+
 class _GeneratePanelState extends State<GeneratePanel> {
   final _promptController = TextEditingController();
   final _roleController = TextEditingController(text: 'backend-engineer');
   int _problemCount = 3;
   bool _isGenerating = false;
-  String? _error;
-  String? _summary;
+  _Outcome _outcome = _Outcome.none;
+  String? _message;
 
   @override
   void dispose() {
@@ -32,17 +37,72 @@ class _GeneratePanelState extends State<GeneratePanel> {
     super.dispose();
   }
 
+  /// Describes what the API actually reported, without overstating it.
+  ///
+  /// The API can answer `200` with `success: false` for a cancelled request, and
+  /// a suite can be generated but not persisted. Claiming persistence in either
+  /// case would tell a reviewer to issue an assessment that does not exist.
+  ({_Outcome outcome, String message}) _describe(GenerateResult result) {
+    if (result.cancelled) {
+      return (
+        outcome: _Outcome.cancelled,
+        message:
+            'Generation was cancelled. Nothing was generated, and nothing was '
+            'saved.',
+      );
+    }
+
+    if (result.error != null && result.error!.isNotEmpty) {
+      return (outcome: _Outcome.failed, message: result.error!);
+    }
+
+    if (!result.success || !result.hasSuite) {
+      return (
+        outcome: _Outcome.failed,
+        message:
+            'The server did not return a suite. Nothing was saved. Check the '
+            'API logs for the correlation id.',
+      );
+    }
+
+    final suite = result.suite!;
+    final problems = (suite['problems'] as List<dynamic>?)?.length ?? 0;
+    final suiteId =
+        (suite['metadata'] as Map<String, dynamic>?)?['suiteId'] as String? ??
+        'unknown';
+
+    if (!result.persisted) {
+      return (
+        outcome: _Outcome.generatedNotPersisted,
+        message:
+            'Generated $problems problem(s). Suite id: $suiteId. It was NOT '
+            'saved: the assessment store rejected the write, so this suite '
+            'exists only in this response and cannot be issued to candidates.',
+      );
+    }
+
+    return (
+      outcome: _Outcome.generated,
+      message:
+          'Generated $problems problem(s). Suite id: $suiteId. The suite was '
+          'saved and can be issued to candidates.',
+    );
+  }
+
   Future<void> _generate() async {
     final prompt = _promptController.text.trim();
     if (prompt.isEmpty) {
-      setState(() => _error = 'Describe the assessment you want to generate.');
+      setState(() {
+        _outcome = _Outcome.failed;
+        _message = 'Describe the assessment you want to generate.';
+      });
       return;
     }
 
     setState(() {
       _isGenerating = true;
-      _error = null;
-      _summary = null;
+      _outcome = _Outcome.none;
+      _message = null;
     });
 
     try {
@@ -51,26 +111,24 @@ class _GeneratePanelState extends State<GeneratePanel> {
         problemCount: _problemCount,
         roleContext: _roleController.text.trim(),
       );
-      final suite = result.suite;
-      final problems = (suite?['problems'] as List<dynamic>?)?.length ?? 0;
-      final suiteId =
-          (suite?['metadata'] as Map<String, dynamic>?)?['suiteId']
-              as String? ??
-          'unknown';
+      final described = _describe(result);
       setState(() {
-        _summary =
-            'Generated $problems problem(s). Suite id: $suiteId. '
-            'The suite was persisted for issue to candidates.';
+        _outcome = described.outcome;
+        _message = described.message;
       });
     } on ApiException catch (e) {
       setState(() {
-        _error = e.isUnauthorised
+        _outcome = _Outcome.failed;
+        _message = e.isUnauthorised
             ? 'Generation requires the operator credential. '
                   'Rebuild the console with --dart-define=API_TOKEN=...'
             : e.message;
       });
     } catch (e) {
-      setState(() => _error = 'Generation failed: $e');
+      setState(() {
+        _outcome = _Outcome.failed;
+        _message = 'Generation failed: $e';
+      });
     } finally {
       if (mounted) setState(() => _isGenerating = false);
     }
@@ -154,32 +212,76 @@ class _GeneratePanelState extends State<GeneratePanel> {
                 : const Icon(Icons.auto_awesome),
             label: Text(_isGenerating ? 'Generating…' : 'Generate assessment'),
           ),
-          if (_summary != null) ...[
+          if (_message != null && _outcome != _Outcome.none) ...[
             const SizedBox(height: 16),
-            Card(
-              color: theme.colorScheme.primaryContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(_summary!, style: theme.textTheme.bodySmall),
-              ),
-            ),
-          ],
-          if (_error != null) ...[
-            const SizedBox(height: 16),
-            Card(
-              color: theme.colorScheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(
-                  _error!,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onErrorContainer,
-                  ),
-                ),
-              ),
-            ),
+            _OutcomeCard(outcome: _outcome, message: _message!),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Renders a generation outcome with a severity that matches what happened.
+///
+/// A generated-but-unsaved suite is deliberately *not* styled as a success: it
+/// is the case where an operator is most likely to assume something was saved.
+class _OutcomeCard extends StatelessWidget {
+  const _OutcomeCard({required this.outcome, required this.message});
+
+  final _Outcome outcome;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    final (
+      Color background,
+      Color foreground,
+      IconData icon,
+    ) = switch (outcome) {
+      _Outcome.generated => (
+        scheme.primaryContainer,
+        scheme.onPrimaryContainer,
+        Icons.check_circle_outline,
+      ),
+      _Outcome.generatedNotPersisted => (
+        scheme.tertiaryContainer,
+        scheme.onTertiaryContainer,
+        Icons.warning_amber_outlined,
+      ),
+      _Outcome.cancelled => (
+        scheme.surfaceContainerHighest,
+        scheme.onSurfaceVariant,
+        Icons.cancel_outlined,
+      ),
+      _Outcome.failed => (
+        scheme.errorContainer,
+        scheme.onErrorContainer,
+        Icons.error_outline,
+      ),
+      _Outcome.none => (scheme.surface, scheme.onSurface, Icons.info_outline),
+    };
+
+    return Card(
+      color: background,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: foreground),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: theme.textTheme.bodySmall?.copyWith(color: foreground),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

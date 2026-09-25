@@ -51,6 +51,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+* **The console reported a cancelled or unsaved generation as a success, and
+  claimed it had been persisted.** The generate panel read only the happy path out
+  of the response and told the operator "The suite was persisted for issue to
+  candidates" whenever a suite came back — including when the API reported
+  `persisted: false`, meaning the store rejected the write and the suite exists
+  only in that response. A cancelled request, which the API answers with `200` and
+  `success: false`, was reported as a completed generation. `GenerateResult` now
+  carries `success` and `persisted`, and the panel renders four distinct states —
+  saved, generated-but-not-saved, cancelled, failed — with the not-saved case
+  deliberately styled as a warning rather than a success.
 * **The reviewer was shown the *oldest* integrity report.** `integrity_reports`
   holds a series per session and the store returns it newest-first, but review
   selected the last array element — the oldest report — and derived the session's
