@@ -30,12 +30,21 @@ These must be true before a `v0.2.0` tag is pushed.
 | A14 | **Convert relative links in the release notes to absolute GitHub URLs before publishing** | ☐ |
 | A15 | Tag created and release published, as its own explicitly authorised step | ☐ |
 
-**A14 is the one open preparation item.** `docs/release/release-notes-v0.1.0.md`
-uses absolute GitHub URLs because relative links resolve differently on a release
-page. The v0.2.0 draft currently uses relative links, which is correct for a
-document read in the repository and wrong for a release body. Convert them in the
-same change that publishes, so the repository copy and the published body stay
-identical — the invariant v0.1.0 established.
+**A14 is complete.** `docs/release/release-notes-v0.2.0.md` now carries absolute
+GitHub URLs for every file link, matching `release-notes-v0.1.0.md`, so the
+repository copy is suitable as a GitHub Release body with no further rewriting.
+
+**In-page anchors were deliberately left relative.** All three remaining relative
+targets are `#heading` links within the same document. GitHub renders a release
+body as markdown with heading ids, so those resolve correctly on a release page;
+only links to *other files* resolve wrongly there. Converting them to absolute
+`blob` URLs would have made them worse, not better. Each was checked against a real
+heading slug in the file.
+
+Verified after conversion: 10 absolute links, each resolving to a path that exists
+in the repository; 0 remaining relative file links; 3 in-page anchors, each
+matching a heading. No images, no bare autolinks and no reference-style link
+definitions are present.
 
 **A15 requires explicit human authorisation.** Publishing is reserved.
 
@@ -98,7 +107,7 @@ git ls-remote --tags origin | grep v0.1.0
 # expect c6eaf96f6323306ce824ad4df9a91bd97c3ef56c  refs/tags/v0.1.0
 #        62b0f5af1d1c1442a9150c0632d7c746b0c6046b  refs/tags/v0.1.0^{}
 
-# 3. Convert the release-note links to absolute URLs and merge that change (A14).
+# 3. (A14 is already done — the release-note links are absolute.)
 
 # 4. Tag the resulting merge commit on main.
 git tag -a v0.2.0 -m "tryveriqo v0.2.0" <merge-commit-sha>

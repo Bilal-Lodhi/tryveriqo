@@ -9,7 +9,7 @@
 > The current published artifact remains the **v0.1.0 pre-release**, at
 > <https://github.com/Bilal-Lodhi/tryveriqo/releases/tag/v0.1.0>. Where v0.1.0's
 > published claims were later found incomplete, that is recorded in
-> [`errata-v0.1.0.md`](errata-v0.1.0.md) — v0.1.0 itself is not rewritten.
+> [`errata-v0.1.0.md`](https://github.com/Bilal-Lodhi/tryveriqo/blob/main/docs/release/errata-v0.1.0.md) — v0.1.0 itself is not rewritten.
 >
 > This is still **not production ready**. Integrity output remains **advisory**: it
 > produces signals for a human reviewer and never proves that a candidate cheated.
@@ -155,7 +155,7 @@ This is a **guard against an accidental public deployment, not a secret store**:
 cannot make an embedded token confidential.
 
 A reference reverse-proxy deployment ships in
-[`deploy/console-proxy/`](../../deploy/console-proxy/README.md): an nginx template
+[`deploy/console-proxy/`](https://github.com/Bilal-Lodhi/tryveriqo/blob/main/deploy/console-proxy/README.md): an nginx template
 that serves the static build and **overwrites** `Authorization` server-side, plus a
 Dockerfile that refuses to start without the credential. Read its README: it fixes
 **where the credential lives**, not **who may use it**.
@@ -295,12 +295,12 @@ spend decision that was not taken.
 **`gemini-api` remains the transport with recorded live success.** A deployment
 choosing `vertex` should verify its own billing, project and region before relying
 on it. See
-[`verification.md`](verification.md#vertex-ai-transport-live-result-post-v010).
+[`verification.md`](https://github.com/Bilal-Lodhi/tryveriqo/blob/main/docs/release/verification.md#vertex-ai-transport-live-result-post-v010).
 
 ## Migration from v0.1.0
 
 **One change requires operator action.** Full detail in
-[`migration-v0.1.0-to-v0.2.0.md`](migration-v0.1.0-to-v0.2.0.md).
+[`migration-v0.1.0-to-v0.2.0.md`](https://github.com/Bilal-Lodhi/tryveriqo/blob/main/docs/release/migration-v0.1.0-to-v0.2.0.md).
 
 In short: registration now requires a capability, so an operator mints one per
 candidate before that candidate registers. A deployment that relied on candidates
@@ -343,9 +343,9 @@ rewritten.
 
 ## Verification
 
-The full record is in [`verification.md`](verification.md), and the release-gate
+The full record is in [`verification.md`](https://github.com/Bilal-Lodhi/tryveriqo/blob/main/docs/release/verification.md), and the release-gate
 results are tabulated in
-[`checklist-v0.2.0.md`](checklist-v0.2.0.md#f-release-gate-results).
+[`checklist-v0.2.0.md`](https://github.com/Bilal-Lodhi/tryveriqo/blob/main/docs/release/checklist-v0.2.0.md#f-release-gate-results).
 
 | Check | Result |
 | --- | --- |
@@ -377,8 +377,8 @@ parsed and read by nothing again.
 ## Getting started
 
 Unchanged from v0.1.0 except for registration. See the
-[README](../../README.md) and [`docs/configuration.md`](../configuration.md).
+[README](https://github.com/Bilal-Lodhi/tryveriqo/blob/main/README.md) and [`docs/configuration.md`](https://github.com/Bilal-Lodhi/tryveriqo/blob/main/docs/configuration.md).
 
 ## License
 
-Apache-2.0. See [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE).
+Apache-2.0. See [LICENSE](https://github.com/Bilal-Lodhi/tryveriqo/blob/main/LICENSE) and [NOTICE](https://github.com/Bilal-Lodhi/tryveriqo/blob/main/NOTICE).
