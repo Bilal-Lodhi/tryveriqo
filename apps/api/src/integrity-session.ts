@@ -33,9 +33,30 @@ export interface SessionState {
   status: SessionStatus;
   /** Live code snapshot reconstructed from telemetry. */
   currentCode: string;
+  /**
+   * The most recent observations, bounded by `MAX_RETAINED_EVENTS`.
+   *
+   * This is a working window, not the record: the durable telemetry in MongoDB is
+   * what a reviewer reads, and it is never trimmed. Use `eventsObserved` for the
+   * true count.
+   */
   events: MicroEvent[];
+  /** True number of observations ever folded in, never reduced by trimming. */
+  eventsObserved: number;
   pasteCount: number;
+  /** Recent keystroke deltas, bounded by `MAX_RETAINED_KEYSTROKES`. */
   keystrokeDeltas: number[];
+  /** True number of keystroke samples ever folded in. */
+  keystrokeObservations: number;
+  /**
+   * Recent pasted content, bounded by `MAX_RETAINED_PASTES`.
+   *
+   * Kept separately from `events` so that trimming the event window cannot change
+   * what an integrity analysis is shown, and vice versa.
+   */
+  recentPasteContents: string[];
+  /** True number of paste observations ever folded in. */
+  pasteObservations: number;
   tabSwitchCount: number;
   windowBlurCount: number;
   fullscreenExitCount: number;
@@ -50,6 +71,13 @@ export interface SessionState {
   /** True when this projection was rebuilt from the persisted record. */
   recoveredFromStore: boolean;
   /**
+   * True when the recovery page was itself truncated, so the counters below were
+   * rebuilt from part of the stored history rather than all of it. Disclosed
+   * rather than hidden: a silently undercounted projection would make the
+   * analysis thresholds less likely to trip.
+   */
+  recoveredPartially: boolean;
+  /**
    * Epoch milliseconds of the most recent observation folded into this
    * projection, or 0 when it has never been observed. This is what the
    * `SESSION_TTL_SECONDS` staleness horizon is measured against.
@@ -59,6 +87,25 @@ export interface SessionState {
 
 /** Maximum fingerprints retained per session. */
 export const FINGERPRINT_WINDOW = 128;
+
+/**
+ * Retained-observation windows.
+ *
+ * The projection exists so thresholds can be evaluated on the ingestion hot path
+ * without a datastore round trip. Nothing bounded its arrays before, so a session
+ * that kept receiving distinct telemetry grew them without limit — duplicate
+ * suppression does not help, because genuinely distinct observations are exactly
+ * what grows them. These windows bound the footprint; the counters beside them
+ * stay true totals, and stored telemetry remains authoritative for review.
+ */
+export const MAX_RETAINED_EVENTS = 1000;
+export const MAX_RETAINED_KEYSTROKES = 2000;
+export const MAX_RETAINED_PASTES = 50;
+
+/** Keeps the newest `max` entries, dropping the oldest. */
+function trimToWindow<T>(list: T[], max: number): void {
+  if (list.length > max) list.splice(0, list.length - max);
+}
 
 export function createSessionState(seed: {
   sessionId: string;
@@ -78,8 +125,12 @@ export function createSessionState(seed: {
     status: seed.status ?? "in_progress",
     currentCode: seed.currentCode ?? "",
     events: [],
+    eventsObserved: 0,
     pasteCount: 0,
     keystrokeDeltas: [],
+    keystrokeObservations: 0,
+    recentPasteContents: [],
+    pasteObservations: 0,
     tabSwitchCount: 0,
     windowBlurCount: 0,
     fullscreenExitCount: 0,
@@ -90,6 +141,7 @@ export function createSessionState(seed: {
     lastAnalyzedCodeHash: "",
     recentEventFingerprints: new Set<string>(),
     recoveredFromStore: seed.recoveredFromStore ?? false,
+    recoveredPartially: false,
     lastActivityAt: seed.lastActivityAt ?? 0,
   };
 }
@@ -166,7 +218,11 @@ export function applyEvent(session: SessionState, event: MicroEvent, now?: numbe
     return { applied: false, duplicate: true };
   }
 
+  // The true total is incremented before any trimming, so it stays a total even
+  // once the working window is full.
+  session.eventsObserved += 1;
   session.events.push(event);
+  trimToWindow(session.events, MAX_RETAINED_EVENTS);
   if (typeof now === "number" && Number.isFinite(now)) {
     session.lastActivityAt = now;
   }
@@ -174,13 +230,18 @@ export function applyEvent(session: SessionState, event: MicroEvent, now?: numbe
   switch (event.eventType) {
     case "KEYSTROKE":
       if (typeof event.payload?.deltaMs === "number") {
+        session.keystrokeObservations += 1;
         session.keystrokeDeltas.push(event.payload.deltaMs);
+        trimToWindow(session.keystrokeDeltas, MAX_RETAINED_KEYSTROKES);
       }
       break;
 
     case "PASTE_TRIGGER":
       session.pasteCount += 1;
       if (event.payload?.pasteContent) {
+        session.pasteObservations += 1;
+        session.recentPasteContents.push(event.payload.pasteContent);
+        trimToWindow(session.recentPasteContents, MAX_RETAINED_PASTES);
         session.currentCode += event.payload.pasteContent;
       }
       break;
@@ -305,6 +366,12 @@ export function hydrateFromPersisted(input: {
   };
   events: readonly MicroEvent[];
   codeFromReports?: string;
+  /**
+   * True when the caller knows the supplied events are only part of the stored
+   * history — for example a truncated review page. Recorded on the projection so
+   * an undercounted recovery is visible rather than implied to be exact.
+   */
+  recoveredPartially?: boolean;
 }): SessionState {
   const session = createSessionState({
     sessionId: input.session.sessionId,
@@ -315,6 +382,7 @@ export function hydrateFromPersisted(input: {
     currentCode: input.session.submittedCode ?? "",
     recoveredFromStore: true,
   });
+  session.recoveredPartially = input.recoveredPartially ?? false;
 
   // Oldest first: the code snapshot is reconstructed in observation order.
   const ordered = [...input.events].sort(

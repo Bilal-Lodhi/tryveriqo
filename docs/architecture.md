@@ -251,6 +251,30 @@ because a retrying client re-serialises the batch with fresh ids. A retry
 therefore collapses onto the original observation, while two genuinely distinct
 observations a few seconds apart stay separate.
 
+**Bounded windows.** The projection retains the newest 1,000 observations, 2,000
+keystroke deltas and 50 pasted contents, with 128 fingerprints. Before this, the
+arrays grew without limit: duplicate suppression does not help, because genuinely
+distinct observations are exactly what grows them, so an authenticated candidate
+could grow one session's footprint indefinitely.
+
+Three rules keep the bound from redefining anything:
+
+* **Totals are separate from windows.** `eventsObserved`,
+  `keystrokeObservations` and `pasteObservations` count every applied observation
+  and are never reduced by trimming, so `eventCount` in the operator summary and
+  the per-type counters stay true totals.
+* **Pasted content has its own window.** It used to be re-derived by scanning the
+  event array at analysis time, which would have made trimming the event window
+  silently change what an analysis is shown.
+* **Stored telemetry stays authoritative.** Review reads it through the MCP tool
+  surface, never the projection.
+
+**Partial recovery is disclosed.** Rebuilding a projection from the store replays
+the events that were fetched, and `GET_SESSION_REVIEW` returns at most
+`eventLimit` of them. When that page was truncated the projection records
+`recoveredPartially`, so an undercounted reconstruction is visible rather than
+presented as exact.
+
 **Code-hash guard.** After an analysis, the SHA-256 of the analysed code is
 retained. Further batches with byte-identical code reuse the previous report
 instead of spending another model call.
