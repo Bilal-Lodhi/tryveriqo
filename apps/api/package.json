@@ -17,7 +17,7 @@
   "dependencies": {
     "@assessment/mcp-mongodb": "0.2.0",
     "@google/genai": "^2.7.0",
-    "@hono/node-server": "^1.13.7",
+    "@hono/node-server": "^2.1.6",
     "dotenv": "^16.6.1",
     "hono": "^4.6.14"
   },
